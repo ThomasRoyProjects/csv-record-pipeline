@@ -24,7 +24,7 @@ Use this file as the map for the public repo.
 - [jobs/demo_custom_match_job.yaml](jobs/demo_custom_match_job.yaml): shipped safe custom-job match demo
 - [jobs/demo_random_custom_job.yaml](jobs/demo_random_custom_job.yaml): shipped safe non-canonical mapping demo
 - [jobs/demo_profiled_custom_job.yaml](jobs/demo_profiled_custom_job.yaml): shipped normalization-profile plus matching demo
-- [jobs/demo_full_custom_job.yaml](jobs/demo_full_custom_job.yaml): shipped broader custom stage-plan demo
+- [jobs/demo_full_custom_job.yaml](jobs/demo_full_custom_job.yaml): shipped broader custom workflow-builder demo
 - [profiles/demo_enrich.yaml](profiles/demo_enrich.yaml): shipped enrichment utility demo
 - [profiles/demo_extract.yaml](profiles/demo_extract.yaml): shipped projection utility demo
 - [profiles/demo_full_process.yaml](profiles/demo_full_process.yaml): shipped full-process preset demo
@@ -34,7 +34,7 @@ Use this file as the map for the public repo.
 
 - [normalization_profiles](normalization_profiles): reusable normalization definitions
 - [profiles](profiles): bundled preset workflow YAMLs
-- [jobs](jobs): example runtime job specs, including custom stage-sequence jobs
+- [jobs](jobs): example runtime job specs, including custom workflow-builder jobs
 - [tests](tests): shipped regression and demo integration coverage
 
 ## Repo Note

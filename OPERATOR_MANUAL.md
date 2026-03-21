@@ -157,13 +157,13 @@ This tab is for:
 
 - compare-style workflows
 - match-style workflows
-- custom stage-based matching jobs
+- custom workflow-builder matching jobs
 
 Typical Match questions:
 
 - does this incoming file already exist in the trusted master file?
 - which rows are clearly matched, which need review, and which look new?
-- can I run a custom stage sequence instead of a preset?
+- can I run a custom workflow instead of a preset?
 
 ### Match workflow
 
@@ -255,6 +255,14 @@ Use `custom_job` when the presets are close but not enough.
 
 A custom job lets you build your own stage plan.
 
+In the current UI, that means:
+
+- start from a live template
+- use grouped stage cards as a picker
+- drop stages onto the workflow canvas
+- expand only the cards you need to edit
+- keep the default canvas compact and visual
+
 Common match-oriented stage order:
 
 1. `normalize_addresses` on `primary`
@@ -328,7 +336,7 @@ It tells you:
 - what it writes
 - common warnings
 
-The same idea also exists for custom stages in the stage-plan editor.
+The same idea also exists for cards inside the workflow builder.
 
 ## Run results
 

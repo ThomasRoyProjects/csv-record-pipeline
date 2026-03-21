@@ -13,7 +13,7 @@ Its current responsibilities are to:
 - score or classify outputs
 - write CSV outputs plus run metadata
 
-The public repo includes both shipped presets and user-defined `custom_job` support through the same underlying engine.
+The public repo includes both shipped presets and user-defined `custom_job` support through the same underlying engine, with a visual workflow builder on top of the stage system.
 
 ## System model
 
@@ -213,7 +213,7 @@ That demo layer exists to show:
 - enrich workflows
 - extract workflows
 - split workflows
-- broader custom stage sequences
+- broader custom workflow-builder jobs
 - full-process execution
 
 Those demos are backed by tests so the public repo is not just documentation and screenshots.

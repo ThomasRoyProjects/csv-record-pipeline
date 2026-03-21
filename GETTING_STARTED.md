@@ -110,7 +110,7 @@ If you want a public-safe walkthrough without touching operational data:
 - [jobs/demo_custom_match_job.yaml](jobs/demo_custom_match_job.yaml): safe shipped custom-job demo
 - [jobs/demo_random_custom_job.yaml](jobs/demo_random_custom_job.yaml): safe shipped custom mapping demo for non-canonical headers
 - [jobs/demo_profiled_custom_job.yaml](jobs/demo_profiled_custom_job.yaml): safe shipped normalization-profile plus custom mapping demo
-- [jobs/demo_full_custom_job.yaml](jobs/demo_full_custom_job.yaml): safe shipped broader custom stage-plan demo
+- [jobs/demo_full_custom_job.yaml](jobs/demo_full_custom_job.yaml): safe shipped broader custom workflow-builder demo
 - [profiles/demo_enrich.yaml](profiles/demo_enrich.yaml): safe shipped reference enrichment demo
 - [profiles/demo_extract.yaml](profiles/demo_extract.yaml): safe shipped projection/extract demo
 - [profiles/demo_full_process.yaml](profiles/demo_full_process.yaml): safe shipped full-process preset demo
@@ -133,7 +133,7 @@ For shipped utility walkthroughs:
 For deeper architecture walkthroughs:
 
 - normalization profile plus matching: [jobs/demo_profiled_custom_job.yaml](jobs/demo_profiled_custom_job.yaml)
-- broader custom stage sequence: [jobs/demo_full_custom_job.yaml](jobs/demo_full_custom_job.yaml)
+- broader custom workflow-builder demo: [jobs/demo_full_custom_job.yaml](jobs/demo_full_custom_job.yaml)
 - full-process preset: [profiles/demo_full_process.yaml](profiles/demo_full_process.yaml)
 
 Role reminder:
@@ -180,15 +180,15 @@ This is useful when you regularly process the same source formats.
 
 If the preset workflows are too specific, switch the workflow to `custom_job`.
 
-The Match tab now includes a first-pass stage-plan editor for that mode. It currently supports:
+The Match tab now includes a visual workflow builder for that mode. It currently supports:
 
-- adding stages from the engine registry
-- resetting to a default match-oriented template
-- reordering and removing stages
+- grouped stage cards
+- live builder templates for common workflow shapes
+- a zoomable canvas with arrows between cards
+- expanding only the cards you want to edit
 - basic per-stage role settings for common stages
-- richer workflow and stage detail panes so the operator can see what a preset or stage actually does before running it
 
-This is the beginning of the custom-job builder, not the final version.
+This is a practical local workflow builder, not a full freeform node engine.
 
 ## Custom normalization profiles
 

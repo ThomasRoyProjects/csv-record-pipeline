@@ -86,7 +86,7 @@ For most custom matching jobs, start with this stage sequence:
 3. `match_records`
 4. `write_records_bundle`
 
-That is the default match-oriented template exposed in the Match tab for `custom_job`.
+That is the default match-oriented builder template exposed in the Match tab for `custom_job`.
 
 You can build from there if you need more.
 
@@ -230,7 +230,7 @@ The Match tab currently supports:
 - grouped header-family inspection
 - clickable header chips to populate mapping slots
 - ordered fallback mappings
-- a first-pass `custom_job` stage-plan editor
+- a visual `custom_job` workflow builder with grouped stage cards and templates
 - richer workflow and stage detail panes
 - asynchronous local runs with job-status polling
 

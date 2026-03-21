@@ -11,7 +11,7 @@ The project includes:
 - configurable normalization profiles
 - matching, enrichment, scoring, and export stages
 - job specs that describe input files, mappings, stages, and outputs
-- custom stage-sequence jobs for advanced composition
+- custom workflow-builder jobs for advanced composition
 
 ## Why This Project Exists
 
@@ -99,8 +99,9 @@ The web app supports:
 - ordered fallback mappings per canonical field
 - clickable header chips that can populate mapping slots
 - normalization profile selection
-- a first-pass `custom_job` stage-plan editor
-- richer stage detail panes inside the custom stage plan
+- a visual `custom_job` workflow builder with grouped stage cards
+- a zoomable workflow canvas with arrows between steps
+- live builder templates for common workflow shapes
 - quick run-control presets plus collapsible advanced settings
 - preset saving
 - asynchronous background job runs with status polling
@@ -119,7 +120,7 @@ At a high level, the system works like this:
 1. Load source datasets from CSV into pandas dataframes.
 2. Apply optional normalization profiles and text cleanup.
 3. Rename or coalesce source-specific headers into canonical fields.
-4. Build a preset or custom stage sequence.
+4. Build a preset or custom workflow in the visual builder.
 5. Run matching, enrichment, classification, scoring, and export stages through the shared execution path.
 6. Write output CSVs plus a `run_summary.json`.
 
@@ -192,7 +193,7 @@ Typical operator flow:
 The shipped tests now cover both matching and utility demos, including:
 
 - custom and preset matching
-- broader custom stage sequences
+- broader custom workflow-builder demos
 - normalization-profile-driven imports
 - full-process preset execution
 - reference enrichment
@@ -207,13 +208,13 @@ Use the synthetic demo pack to learn the system by capability instead of by impl
 - [jobs/demo_match_job.yaml](jobs/demo_match_job.yaml)
   Teaches the simplest preset-style compare and match flow.
 - [jobs/demo_custom_match_job.yaml](jobs/demo_custom_match_job.yaml)
-  Teaches how the same match logic can run through a `custom_job` stage sequence.
+  Teaches how the same match logic can run through a `custom_job` workflow builder.
 - [jobs/demo_random_custom_job.yaml](jobs/demo_random_custom_job.yaml)
   Teaches canonical mapping from non-standard source headers.
 - [jobs/demo_profiled_custom_job.yaml](jobs/demo_profiled_custom_job.yaml)
   Teaches how a normalization profile can reshape an awkward import before matching.
 - [jobs/demo_full_custom_job.yaml](jobs/demo_full_custom_job.yaml)
-  Teaches a broader custom stage plan with date normalization, address normalization, dedupe, matching, address classification, contact aggregation, scoring, and multiple outputs.
+  Teaches a broader custom workflow with date normalization, address normalization, dedupe, matching, address classification, contact aggregation, scoring, and multiple outputs.
 - [profiles/demo_enrich.yaml](profiles/demo_enrich.yaml)
   Teaches exact-key reference enrichment.
 - [profiles/demo_extract.yaml](profiles/demo_extract.yaml)
@@ -223,7 +224,7 @@ Use the synthetic demo pack to learn the system by capability instead of by impl
 - [profiles/demo_full_process.yaml](profiles/demo_full_process.yaml)
   Teaches the heavier preset path that chains normalization, dedupe, reconcile, address status, contact aggregation, and scoring.
 
-Together these demos cover `Prep`, `Match`, `Utilities`, normalization profiles, presets, and custom stage sequences.
+Together these demos cover `Prep`, `Match`, `Utilities`, normalization profiles, presets, and custom workflow-builder jobs.
 
 ## Primary Vs Reference
 
