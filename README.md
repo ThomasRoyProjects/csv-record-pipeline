@@ -26,7 +26,7 @@ This project turns those problems into a repeatable local workflow.
 
 ## About This Project
 
-This project started from real scripts and YAML workflows I originally used for CSV-heavy EDA operations: cleaning files, reconciling records, matching against reference data, and exporting workable outputs.
+This project started from real scripts and YAML workflows I originally wrote for CSV-heavy EDA operations: cleaning files, reconciling records, matching against reference data, and exporting workable outputs.
 
 Over time, I turned that original workflow set into a more reusable local tool with a shared engine, shipped demos, tests, and a browser UI so future operators would not need to work entirely from the terminal.
 
