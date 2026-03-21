@@ -15,9 +15,17 @@ const cancelDangerModal = document.getElementById("cancelDangerModal");
 const confirmDangerModal = document.getElementById("confirmDangerModal");
 const dangerModalMessage = document.getElementById("dangerModalMessage");
 const customStagePanel = document.getElementById("customStagePanel");
-const customStageSelect = document.getElementById("customStageSelect");
 const customStageList = document.getElementById("customStageList");
 const customStageDescription = document.getElementById("customStageDescription");
+const stageLibrary = document.getElementById("stageLibrary");
+const customStageViewport = document.getElementById("customStageViewport");
+const customStageCanvas = document.getElementById("customStageCanvas");
+const customStageSvg = document.getElementById("customStageSvg");
+const builderTemplateSelect = document.getElementById("builderTemplateSelect");
+const applyBuilderTemplate = document.getElementById("applyBuilderTemplate");
+const customStageZoom = document.getElementById("customStageZoom");
+const zoomOutStages = document.getElementById("zoomOutStages");
+const zoomInStages = document.getElementById("zoomInStages");
 const jobSpec = document.getElementById("jobSpec");
 const resultBox = document.getElementById("resultBox");
 
@@ -63,6 +71,11 @@ const matchProgressBar = document.getElementById("matchProgressBar");
 const matchProgressLabel = document.getElementById("matchProgressLabel");
 const matchProgressValue = document.getElementById("matchProgressValue");
 const matchPreviewPanel = document.getElementById("matchPreviewPanel");
+const workflowMetaPanel = document.getElementById("workflowMetaPanel");
+const workflowSavedConfigs = document.getElementById("workflowSavedConfigs");
+const quickPresetBar = document.getElementById("quickPresetBar");
+const thresholdCard = document.getElementById("thresholdCard");
+const jobSpecPanel = document.getElementById("jobSpecPanel");
 
 const normalizeInputFile = document.getElementById("normalizeInputFile");
 const normalizeInputStatus = document.getElementById("normalizeInputStatus");
@@ -102,6 +115,8 @@ let normalizeState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
 let primaryState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
 let referenceState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
 let customStagePlan = [];
+let customStageZoomLevel = 100;
+let draggedStageId = "";
 let customProfileRuleCount = 0;
 let primaryUploadedPath = "";
 let referenceUploadedPath = "";
@@ -140,6 +155,25 @@ const NORMALIZE_FIELD_DESCRIPTIONS = {
   mail_zip: "Mailing postal or zip code.",
   email: "Preferred email field.",
   phone: "Preferred phone field."
+};
+const BUILDER_TEMPLATES = {
+  match_template: {
+    label: "Match Template",
+    stages: [
+      { name: "normalize_addresses", config: { dataset_role: "primary", mode: "member" }, x: 40, y: 80 },
+      { name: "normalize_addresses", config: { dataset_role: "reference", mode: "voter" }, x: 420, y: 80 },
+      { name: "match_records", config: { primary_role: "primary", reference_role: "reference" }, x: 800, y: 80 },
+      { name: "write_records_bundle", config: { dataset_role: "primary" }, x: 1180, y: 80 }
+    ]
+  },
+  enrich_template: {
+    label: "Enrich Template",
+    stages: [
+      { name: "join_reference_fields", config: { primary_role: "primary", reference_role: "reference", left_on: "person_id", right_on: "person_id", take_columns: "email,phone" }, x: 40, y: 80 },
+      { name: "project_records", config: { source_role: "primary", artifact_name: "enriched_records" }, x: 460, y: 80 },
+      { name: "write_records_output", config: { source_kind: "artifact", source_name: "enriched_records", output_key: "enriched_records" }, x: 840, y: 80 }
+    ]
+  }
 };
 const MAPPING_SLOT_LABELS = ["Primary source", "Fallback 1", "Fallback 2"];
 const GROUP_CANONICAL_TARGETS = {
@@ -186,6 +220,10 @@ function buildMappingSelect(headerOptions, value, placeholder) {
 
 function pretty(value) {
   return JSON.stringify(value, null, 2);
+}
+
+function isBuilderWorkflow(workflow) {
+  return workflow === "custom_job";
 }
 
 function defaultOutputDirectory() {
@@ -666,11 +704,14 @@ async function loadDemoDefaults() {
 
 async function loadStages() {
   availableStages = await fetchJson("/api/stages");
-  const options = availableStages.map((stage) => ({
-    value: stage.name,
-    label: stage.label
-  }));
-  setSelectOptions(customStageSelect, options, "Select stage");
+  if (builderTemplateSelect) {
+    setSelectOptions(
+      builderTemplateSelect,
+      Object.entries(BUILDER_TEMPLATES).map(([value, template]) => ({ value, label: template.label })),
+      "Select builder template"
+    );
+  }
+  renderStageLibrary();
   showSelectedStageDetail();
 }
 
@@ -708,12 +749,32 @@ function defaultBundleOutputs() {
 }
 
 function defaultCustomStagePlan() {
-  return [
-    { id: crypto.randomUUID(), name: "normalize_addresses", config: { dataset_role: "primary", mode: "member" } },
-    { id: crypto.randomUUID(), name: "normalize_addresses", config: { dataset_role: "reference", mode: "voter" } },
-    { id: crypto.randomUUID(), name: "match_records", config: { primary_role: "primary", reference_role: "reference" } },
-    { id: crypto.randomUUID(), name: "write_records_bundle", config: { dataset_role: "primary" } }
-  ];
+  return buildTemplatePlan("match_template");
+}
+
+function templateForWorkflow(workflow) {
+  if (workflow === "custom_job") return builderTemplateSelect?.value || "match_template";
+  if (workflow === "enrich_records_from_reference") return "enrich_template";
+  if (["match_records_to_reference", "compare_records_to_reference", "identify_missing_records_from_system", "process_full_records"].includes(workflow)) {
+    return "match_template";
+  }
+  return "";
+}
+
+function buildTemplatePlan(templateName) {
+  const template = BUILDER_TEMPLATES[templateName] || BUILDER_TEMPLATES.match_template;
+  const plan = template.stages.map((stage, index) => ({
+    id: crypto.randomUUID(),
+    name: stage.name,
+    x: stage.x ?? defaultStagePosition(index).x,
+    y: stage.y ?? defaultStagePosition(index).y,
+    expanded: false,
+    config: { ...stage.config }
+  }));
+  plan.forEach((stage, index) => {
+    stage.nextStageId = plan[index + 1]?.id || "";
+  });
+  return plan;
 }
 
 function defaultStageConfig(stageName) {
@@ -731,6 +792,10 @@ function defaultStageConfig(stageName) {
     case "match_records":
     case "flag_reference_identity":
       return { primary_role: "primary", reference_role: "reference" };
+    case "join_reference_fields":
+      return { primary_role: "primary", reference_role: "reference", left_on: "person_id", right_on: "person_id", take_columns: "email,phone" };
+    case "project_selected_columns":
+      return { source_role: "primary", columns: "first_name:first_name,last_name:last_name,email:email" };
     default:
       return {};
   }
@@ -746,6 +811,12 @@ function stageMeta(stageName) {
 
 function stageContextLabel(stage) {
   if (!stage?.config) return "";
+  if (stage.name === "select_match_bucket" && stage.config.source_role && stage.config.target_role) {
+    return `${stage.config.source_role} -> ${stage.config.target_role}`;
+  }
+  if (stage.name === "join_reference_fields" && stage.config.left_on && stage.config.right_on) {
+    return `${stage.config.left_on} -> ${stage.config.right_on}`;
+  }
   if (stage.config.dataset_role) {
     return stage.config.dataset_role;
   }
@@ -758,60 +829,151 @@ function stageContextLabel(stage) {
   return "";
 }
 
+function stageFamily(stageName) {
+  if (["normalize_names", "normalize_addresses", "normalize_date_columns", "dedupe_records"].includes(stageName)) {
+    return "Prep";
+  }
+  if (["match_records", "flag_reference_identity", "select_match_bucket", "join_reference_fields"].includes(stageName)) {
+    return "Match";
+  }
+  if (["project_records", "project_selected_columns", "write_records_output", "write_records_bundle", "extract_projection"].includes(stageName)) {
+    return "Output";
+  }
+  if (["aggregate_contacts", "classify_address_status", "score_priority"].includes(stageName)) {
+    return "Refine";
+  }
+  return "Step";
+}
+
+function formatColumnMapForEditor(columnMap) {
+  if (!columnMap || typeof columnMap !== "object") return "";
+  return Object.entries(columnMap).map(([target, source]) => `${target}:${source}`).join(", ");
+}
+
+function parseColumnMapString(value) {
+  const result = {};
+  String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach((pair) => {
+      const [target, ...rest] = pair.split(":");
+      const source = rest.join(":").trim();
+      if (target?.trim() && source) {
+        result[target.trim()] = source;
+      }
+    });
+  return result;
+}
+
 function showSelectedStageDetail() {
   if (!customStageDescription) return;
-  const stage = availableStages.find((item) => item.name === customStageSelect.value);
+  const selectedName = stageLibrary?.querySelector(".stage-library-card.active")?.dataset.stageName || "";
+  const stage = availableStages.find((item) => item.name === selectedName);
   if (!stage) {
     customStageDescription.innerHTML = `
-      <div class="workflow-detail-summary">
-        <strong>Select a stage</strong>
-        <p>Pick a stage from the list to see what it expects, what it changes, and when to use it.</p>
-      </div>
+      <strong>Pick a stage card to add it.</strong>
+      <span>Use the canvas to arrange steps visually. Remove cards from the workflow itself when you do not need them.</span>
     `;
     return;
   }
-  const renderList = (items, emptyMessage) => {
-    if (!items || !items.length) {
-      return `<div class="workflow-empty">${emptyMessage}</div>`;
-    }
-    return `<ul>${items.map((item) => `<li>${item}</li>`).join("")}</ul>`;
-  };
   customStageDescription.innerHTML = `
-    <div class="workflow-detail-head">
-      <div>
-        <p class="workflow-kicker">Selected stage</p>
-        <h3>${stage.label}</h3>
-      </div>
-      <div class="workflow-detail-callout">
-        <strong>Best use</strong>
-        <p>${stage.operator_goal || "No guidance available yet."}</p>
-      </div>
-    </div>
-    <div class="workflow-detail-summary">
-      <strong>What this stage does</strong>
-      <p>${stage.summary || "No stage summary available."}</p>
-    </div>
-    <div class="workflow-detail-grid">
-      <section class="workflow-detail-section">
-        <h4>Required dataset roles</h4>
-        ${(stage.required_inputs || []).length
-          ? `<div class="workflow-inline-list">${stage.required_inputs.map((input) => `<span class="workflow-pill">${input}</span>`).join("")}</div>`
-          : `<div class="workflow-empty">No fixed dataset roles required.</div>`}
-      </section>
-      <section class="workflow-detail-section">
-        <h4>Inputs to think about</h4>
-        ${renderList(stage.inputs_detail, "No input guidance documented yet.")}
-      </section>
-      <section class="workflow-detail-section">
-        <h4>What it changes</h4>
-        ${renderList(stage.effects, "No stage effects documented yet.")}
-      </section>
-      <section class="workflow-detail-section workflow-detail-warning">
-        <h4>Watch for</h4>
-        ${renderList(stage.watch_for, "No warnings documented yet.")}
-      </section>
-    </div>
+    <strong>${stage.label}</strong>
+    <span>${stage.summary || "No stage summary available."}</span>
   `;
+}
+
+function setCustomStageZoom(nextValue) {
+  customStageZoomLevel = Math.max(70, Math.min(140, Number(nextValue) || 100));
+  if (customStageZoom) customStageZoom.value = String(customStageZoomLevel);
+  if (customStageCanvas) customStageCanvas.style.transform = `scale(${customStageZoomLevel / 100})`;
+}
+
+function defaultStagePosition(index) {
+  return { x: 40 + index * 380, y: 40 };
+}
+
+function drawCustomStageConnectors() {
+  const svg = customStageSvg;
+  if (!svg || !customStageCanvas) return;
+  const nodes = Array.from(customStageList.querySelectorAll(".custom-stage-step"));
+  const width = Math.max(
+    ...nodes.map((node) => (Number(node.style.left.replace("px", "")) || 0) + node.offsetWidth + 120),
+    customStageViewport?.clientWidth || 1200
+  );
+  const height = Math.max(
+    ...nodes.map((node) => (Number(node.style.top.replace("px", "")) || 0) + node.offsetHeight + 120),
+    320
+  );
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("width", String(width));
+  svg.setAttribute("height", String(height));
+  svg.innerHTML = `<defs><marker id="workflowArrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"></path></marker></defs>`;
+  const nodeMap = new Map(nodes.map((node) => [node.dataset.stageId, node]));
+  for (const stage of customStagePlan) {
+    const current = nodeMap.get(stage.id);
+    const next = nodeMap.get(stage.nextStageId);
+    if (!current || !next) continue;
+    const x1 = (Number(current.style.left.replace("px", "")) || 0) + current.offsetWidth;
+    const y1 = (Number(current.style.top.replace("px", "")) || 0) + current.offsetHeight / 2;
+    const x2 = Number(next.style.left.replace("px", "")) || 0;
+    const y2 = (Number(next.style.top.replace("px", "")) || 0) + next.offsetHeight / 2;
+    const delta = Math.max(60, Math.abs(x2 - x1) / 2);
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", `M ${x1} ${y1} C ${x1 + delta} ${y1}, ${x2 - delta} ${y2}, ${x2} ${y2}`);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "#94a3b8");
+    path.setAttribute("stroke-width", "3");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("marker-end", "url(#workflowArrow)");
+    svg.appendChild(path);
+  }
+}
+
+function renderStageLibrary() {
+  if (!stageLibrary) return;
+  stageLibrary.innerHTML = "";
+  const grouped = availableStages.reduce((acc, stage) => {
+    const family = stageFamily(stage.name);
+    acc[family] = acc[family] || [];
+    acc[family].push(stage);
+    return acc;
+  }, {});
+  Object.entries(grouped).forEach(([family, stages], familyIndex) => {
+    const section = document.createElement("details");
+    section.className = "stage-library-group";
+    if (familyIndex < 2) section.open = true;
+    const summary = document.createElement("summary");
+    summary.className = "stage-library-group-head";
+    summary.innerHTML = `<span class="stage-library-family">${family}</span><strong>${family} stages</strong><span class="stage-library-count">${stages.length}</span>`;
+    section.appendChild(summary);
+    const list = document.createElement("div");
+    list.className = "stage-library-group-list";
+    stages.forEach((stage) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "stage-library-card";
+      button.dataset.stageName = stage.name;
+      button.innerHTML = `<strong>${stage.label}</strong><span class="stage-library-summary">${stage.summary || ""}</span><span class="stage-library-add">Add</span>`;
+      button.addEventListener("click", () => {
+        stageLibrary.querySelectorAll(".stage-library-card").forEach((card) => card.classList.remove("active"));
+        button.classList.add("active");
+        showSelectedStageDetail();
+        customStagePlan.push({
+          id: crypto.randomUUID(),
+          name: stage.name,
+          expanded: true,
+          config: defaultStageConfig(stage.name),
+          ...defaultStagePosition(customStagePlan.length)
+        });
+        renderCustomStagePlan();
+        syncPreview();
+      });
+      list.appendChild(button);
+    });
+    section.appendChild(list);
+    stageLibrary.appendChild(section);
+  });
 }
 
 function datasetRoleOptions() {
@@ -822,7 +984,7 @@ function datasetRoleOptions() {
 }
 
 function ensureCustomStagePlan() {
-  if (workflowSelect.value !== "custom_job") return;
+  if (!isBuilderWorkflow(workflowSelect.value)) return;
   if (!customStagePlan.length) {
     customStagePlan = defaultCustomStagePlan();
   }
@@ -909,12 +1071,16 @@ function renderNormalizeMappingForm() {
 }
 
 function renderCustomStagePlan() {
-  const isCustom = workflowSelect.value === "custom_job";
+  const isCustom = isBuilderWorkflow(workflowSelect.value);
   customStagePanel.classList.toggle("hidden", !isCustom);
   if (!isCustom) return;
   showSelectedStageDetail();
+  setCustomStageZoom(customStageZoomLevel);
 
   customStageList.innerHTML = "";
+  if (customStageSvg) {
+    customStageSvg.innerHTML = "";
+  }
   if (!customStagePlan.length) {
     customStageList.innerHTML = `<div class="custom-stage-empty">No stages yet. Add a stage or reset to the default match template.</div>`;
     return;
@@ -922,8 +1088,18 @@ function renderCustomStagePlan() {
 
   const roleOptions = datasetRoleOptions();
   customStagePlan.forEach((stage, index) => {
+    const step = document.createElement("div");
+    step.className = "custom-stage-step";
+    if (stage.x == null || stage.y == null) {
+      Object.assign(stage, defaultStagePosition(index));
+    }
+    step.style.left = `${stage.x}px`;
+    step.style.top = `${stage.y}px`;
+    step.dataset.stageId = stage.id;
+
     const card = document.createElement("div");
     card.className = "custom-stage-card";
+    card.classList.toggle("collapsed", !stage.expanded);
     const definition = stageMeta(stage.name);
 
     const head = document.createElement("div");
@@ -932,39 +1108,45 @@ function renderCustomStagePlan() {
     meta.className = "custom-stage-meta";
     const contextLabel = stageContextLabel(stage);
     meta.innerHTML = `
+      <div class="custom-stage-topline">
+        <span class="custom-stage-number">Step ${index + 1}</span>
+        <span class="custom-stage-family">${stageFamily(stage.name)}</span>
+      </div>
       <strong>${stageLabel(stage.name)}${contextLabel ? `: ${contextLabel}` : ""}</strong>
-      <span class="custom-stage-name">${stage.name}</span>
       ${definition?.summary ? `<p class="custom-stage-summary">${definition.summary}</p>` : ""}
     `;
     const actions = document.createElement("div");
     actions.className = "custom-stage-actions";
-    ["Up", "Down", "Remove"].forEach((label) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "ghost small";
-      button.textContent = label;
-      if (label === "Up") button.disabled = index === 0;
-      if (label === "Down") button.disabled = index === customStagePlan.length - 1;
-      button.addEventListener("click", () => {
-        if (label === "Remove") {
-          customStagePlan = customStagePlan.filter((item) => item.id !== stage.id);
-        } else {
-          const next = [...customStagePlan];
-          const target = label === "Up" ? index - 1 : index + 1;
-          [next[index], next[target]] = [next[target], next[index]];
-          customStagePlan = next;
-        }
-        renderCustomStagePlan();
-        syncPreview();
-      });
-      actions.appendChild(button);
+    const toggleButton = document.createElement("button");
+    toggleButton.type = "button";
+    toggleButton.className = "ghost small";
+    toggleButton.textContent = stage.expanded ? "Collapse" : "Expand";
+    toggleButton.addEventListener("click", () => {
+      stage.expanded = !stage.expanded;
+      renderCustomStagePlan();
     });
+    actions.appendChild(toggleButton);
+    const dragHint = document.createElement("span");
+    dragHint.className = "custom-stage-draghint";
+    dragHint.textContent = "Drag Card";
+    actions.appendChild(dragHint);
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "ghost small custom-stage-remove";
+    removeButton.textContent = "Remove";
+    removeButton.addEventListener("click", () => {
+      customStagePlan = customStagePlan.filter((item) => item.id !== stage.id);
+      renderCustomStagePlan();
+      syncPreview();
+    });
+    actions.appendChild(removeButton);
     head.appendChild(meta);
     head.appendChild(actions);
     card.appendChild(head);
 
     const grid = document.createElement("div");
     grid.className = "custom-stage-grid";
+    grid.classList.toggle("hidden", !stage.expanded);
 
     const addSelectField = (labelText, key, options, defaultValue) => {
       const label = document.createElement("label");
@@ -992,6 +1174,22 @@ function renderCustomStagePlan() {
       grid.appendChild(label);
     };
 
+    const connectLabel = document.createElement("label");
+    connectLabel.innerHTML = `<span>Connect to</span>`;
+    const connectOptions = [{ value: "", label: "No arrow" }].concat(
+      customStagePlan
+        .filter((item) => item.id !== stage.id)
+        .map((item, itemIndex) => ({ value: item.id, label: `Step ${itemIndex + 1}: ${stageLabel(item.name)}` }))
+    );
+    const connectSelect = buildMappingSelect(connectOptions, stage.nextStageId || "", "Connect to");
+    connectSelect.addEventListener("change", () => {
+      stage.nextStageId = connectSelect.value;
+      drawCustomStageConnectors();
+      syncPreview();
+    });
+    connectLabel.appendChild(connectSelect);
+    grid.appendChild(connectLabel);
+
     if (stage.name === "normalize_addresses") {
       addSelectField("Dataset role", "dataset_role", roleOptions, "primary");
       addSelectField("Mode", "mode", [{ value: "member", label: "member" }, { value: "voter", label: "voter" }], "member");
@@ -1003,13 +1201,24 @@ function renderCustomStagePlan() {
     } else if (["match_records", "flag_reference_identity"].includes(stage.name)) {
       addSelectField("Primary role", "primary_role", roleOptions, "primary");
       addSelectField("Reference role", "reference_role", roleOptions, "reference");
+    } else if (stage.name === "join_reference_fields") {
+      addSelectField("Primary role", "primary_role", roleOptions, "primary");
+      addSelectField("Reference role", "reference_role", roleOptions, "reference");
+      addTextField("Primary join key", "left_on", "person_id");
+      addTextField("Reference join key", "right_on", "person_id");
+      addTextField("Reference fields", "take_columns", "email,phone");
+    } else if (stage.name === "project_selected_columns") {
+      addSelectField("Source role", "source_role", roleOptions, "primary");
+      addTextField("Output:source map", "columns", formatColumnMapForEditor(stage.config.columns) || "first_name:first_name,last_name:last_name,email:email");
     }
 
     if (grid.children.length) {
       card.appendChild(grid);
     }
-    customStageList.appendChild(card);
+    step.appendChild(card);
+    customStageList.appendChild(step);
   });
+  drawCustomStageConnectors();
 }
 
 function serializeCustomStageSequence() {
@@ -1096,6 +1305,27 @@ function serializeCustomStageSequence() {
         }
       };
     }
+    if (stage.name === "join_reference_fields") {
+      return {
+        name: stage.name,
+        config: {
+          primary_role: config.primary_role || "primary",
+          reference_role: config.reference_role || "reference",
+          left_on: config.left_on || "person_id",
+          right_on: config.right_on || "person_id",
+          take_columns: String(config.take_columns || "").split(",").map((value) => value.trim()).filter(Boolean)
+        }
+      };
+    }
+    if (stage.name === "project_selected_columns") {
+      return {
+        name: stage.name,
+        config: {
+          source_role: config.source_role || "primary",
+          columns: parseColumnMapString(config.columns)
+        }
+      };
+    }
     return { name: stage.name, config };
   });
 }
@@ -1104,8 +1334,18 @@ function deserializeCustomStageSequence(stageSequence) {
   customStagePlan = (stageSequence || []).map((stage, index) => ({
     id: `${stage.name}-${index}-${Math.random().toString(36).slice(2, 8)}`,
     name: stage.name,
-    config: { ...(stage.config || {}) }
+    ...defaultStagePosition(index),
+    expanded: false,
+    nextStageId: "",
+    config: {
+      ...(stage.config || {}),
+      ...(stage.name === "project_selected_columns" ? { columns: formatColumnMapForEditor(stage.config?.columns) } : {}),
+      ...(stage.name === "join_reference_fields" ? { take_columns: (stage.config?.take_columns || []).join(", ") } : {})
+    }
   }));
+  customStagePlan.forEach((stage, index) => {
+    stage.nextStageId = customStagePlan[index + 1]?.id || "";
+  });
 }
 
 function renderHeaderGroups(inputName) {
@@ -1238,6 +1478,13 @@ function buildJobSpecObject() {
 
   if (workflow === "custom_job") {
     payload.stage_sequence = serializeCustomStageSequence();
+    payload.builder_layout = customStagePlan.map((stage) => ({
+      name: stage.name,
+      x: stage.x,
+      y: stage.y,
+      next_stage_id: stage.nextStageId || "",
+      expanded: Boolean(stage.expanded)
+    }));
   }
 
   return payload;
@@ -1300,6 +1547,15 @@ function applyPresetToForm(preset) {
   reviewThreshold.value = preset.match?.review_threshold ?? 85;
   if ((preset.workflow || workflowSelect.value) === "custom_job") {
     deserializeCustomStageSequence(preset.stage_sequence || []);
+    if (Array.isArray(preset.builder_layout)) {
+      customStagePlan = customStagePlan.map((stage, index) => ({
+        ...stage,
+        x: preset.builder_layout[index]?.x ?? stage.x,
+        y: preset.builder_layout[index]?.y ?? stage.y,
+        nextStageId: preset.builder_layout[index]?.next_stage_id ?? stage.nextStageId,
+        expanded: preset.builder_layout[index]?.expanded ?? stage.expanded
+      }));
+    }
   } else {
     customStagePlan = [];
   }
@@ -1568,18 +1824,21 @@ function updateCustomProfilePreview() {
 
 async function showWorkflow() {
   const workflow = workflowSelect.value;
+  if (!workflow) {
+    currentWorkflowMeta = null;
+    workflowMeta.textContent = "";
+    workflowDescription.innerHTML = "";
+    matchContract.innerHTML = "";
+    syncPreview();
+    return;
+  }
   currentWorkflowMeta = await fetchJson(`/api/workflows/${workflow}`);
   if (!outputPath.value.trim() || outputPath.value.includes("/absolute/path/to/output")) {
     outputPath.value = defaultOutputDirectory();
   }
   workflowMeta.textContent = pretty(currentWorkflowMeta);
   const description = currentWorkflowMeta.description || {};
-  const renderList = (items, emptyMessage) => {
-    if (!items || !items.length) {
-      return `<div class="workflow-empty">${emptyMessage}</div>`;
-    }
-    return `<ul>${items.map((item) => `<li>${item}</li>`).join("")}</ul>`;
-  };
+  const topItems = (items, limit = 3) => (items || []).filter(Boolean).slice(0, limit);
   const renderInputRoles = () => {
     const inputs = currentWorkflowMeta.inputs || [];
     if (!inputs.length) {
@@ -1599,35 +1858,29 @@ async function showWorkflow() {
       </div>
     </div>
     <div class="workflow-detail-summary">
-      <strong>What this workflow is for</strong>
       <p>${description.summary || "No workflow description available."}</p>
       ${description.operator_goal ? `<p><strong>Operator goal:</strong> ${description.operator_goal}</p>` : ""}
     </div>
     <div class="workflow-detail-grid">
       <section class="workflow-detail-section">
         <h4>Input roles</h4>
-        <p>These are the dataset roles this workflow expects before it can run.</p>
         ${renderInputRoles()}
       </section>
       <section class="workflow-detail-section">
-        <h4>What happens</h4>
-        ${renderList(description.does, "No workflow steps documented yet.")}
+        <h4>What it does</h4>
+        <ul>${topItems(description.does, 3).map((item) => `<li>${item}</li>`).join("")}</ul>
       </section>
       <section class="workflow-detail-section">
-        <h4>How to think about the files</h4>
-        ${renderList(description.inputs_detail, "No input guidance documented yet.")}
+        <h4>Typical steps</h4>
+        <ul>${topItems(description.step_by_step, 3).map((item) => `<li>${item}</li>`).join("")}</ul>
       </section>
       <section class="workflow-detail-section">
-        <h4>What gets written</h4>
-        ${renderList(description.outputs_detail, "No output guidance documented yet.")}
-      </section>
-      <section class="workflow-detail-section">
-        <h4>Typical run sequence</h4>
-        ${renderList(description.step_by_step, "No run sequence documented yet.")}
+        <h4>Outputs</h4>
+        <ul>${topItems(description.outputs_detail, 3).map((item) => `<li>${item}</li>`).join("")}</ul>
       </section>
       <section class="workflow-detail-section workflow-detail-warning">
         <h4>Watch for</h4>
-        ${renderList(description.watch_for, "No warnings documented yet.")}
+        <ul>${topItems(description.watch_for, 2).map((item) => `<li>${item}</li>`).join("")}</ul>
       </section>
     </div>
   `;
@@ -1639,6 +1892,15 @@ async function showWorkflow() {
     contact ${formatMatchInputValue(matchInputs.contact || [])}.
     Map these if you want them to influence the matcher.
   `;
+  const templateName = templateForWorkflow(workflow);
+  if (builderTemplateSelect && templateName) {
+    builderTemplateSelect.value = templateName;
+  }
+  if (workflow === "custom_job" && !customStagePlan.length) {
+    customStagePlan = buildTemplatePlan(templateName || "match_template");
+  } else if (workflow !== "custom_job") {
+    customStagePlan = [];
+  }
   ensureCustomStagePlan();
   renderCustomStagePlan();
   renderMappingForm("primary");
@@ -1895,23 +2157,31 @@ deleteAllOutputsButton.addEventListener("click", async () => {
     resultBox.textContent = String(error.message || error);
   }
 });
-document.getElementById("addCustomStage").addEventListener("click", () => {
-  if (!customStageSelect.value) return;
-  customStagePlan.push({
-    id: crypto.randomUUID(),
-    name: customStageSelect.value,
-    config: defaultStageConfig(customStageSelect.value)
-  });
-  renderCustomStagePlan();
-  syncPreview();
-});
 document.getElementById("resetCustomStages").addEventListener("click", () => {
   customStagePlan = defaultCustomStagePlan();
   renderCustomStagePlan();
   syncPreview();
 });
-customStageSelect.addEventListener("change", () => {
-  showSelectedStageDetail();
+applyBuilderTemplate?.addEventListener("click", () => {
+  const templateName = builderTemplateSelect?.value || "match_template";
+  customStagePlan = buildTemplatePlan(templateName);
+  renderCustomStagePlan();
+  syncPreview();
+});
+builderTemplateSelect?.addEventListener("change", () => {
+  const templateName = builderTemplateSelect?.value || "match_template";
+  customStagePlan = buildTemplatePlan(templateName);
+  renderCustomStagePlan();
+  syncPreview();
+});
+customStageZoom?.addEventListener("input", () => {
+  setCustomStageZoom(Number(customStageZoom.value || 100));
+});
+zoomOutStages?.addEventListener("click", () => {
+  setCustomStageZoom(customStageZoomLevel - 10);
+});
+zoomInStages?.addEventListener("click", () => {
+  setCustomStageZoom(customStageZoomLevel + 10);
   syncPreview();
 });
 openMatchHelp.addEventListener("click", () => setMatchHelpOpen(true));

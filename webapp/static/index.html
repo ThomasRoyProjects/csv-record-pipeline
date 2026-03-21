@@ -166,28 +166,46 @@
           <div class="demo-note">Shipped demo files are preloaded for the selected workflow so you can run the app immediately.</div>
           <div id="workflowDescription" class="workflow-detail-box"></div>
           <div id="matchContract" class="contract-box"></div>
-          <div class="preset-bar">
-            <select id="presetSelect"></select>
-            <input id="presetName" type="text" placeholder="name for saved configuration">
-            <button id="loadPreset" class="ghost small">Load Saved Config</button>
-            <button id="savePreset" class="ghost small">Save Current Config</button>
-          </div>
-          <div id="presetHelp" class="file-status">Saved configurations let you reuse one workflow setup later. Enter a name, click save, then it will appear in the list.</div>
-          <pre id="workflowMeta" class="codebox"></pre>
+          <details id="workflowSavedConfigs" class="more-settings">
+            <summary>Saved Configurations</summary>
+            <div class="preset-bar">
+              <select id="presetSelect"></select>
+              <input id="presetName" type="text" placeholder="name for saved configuration">
+              <button id="loadPreset" class="ghost small">Load Saved Config</button>
+              <button id="savePreset" class="ghost small">Save Current Config</button>
+            </div>
+            <div id="presetHelp" class="file-status">Saved configurations let you reuse one workflow setup later. Enter a name, click save, then it will appear in the list.</div>
+          </details>
+          <details id="workflowMetaPanel" class="more-settings">
+            <summary>Workflow Metadata</summary>
+            <pre id="workflowMeta" class="codebox"></pre>
+          </details>
         </section>
 
         <section id="customStagePanel" class="panel hidden">
           <div class="panel-head">
-            <h2>Custom Stage Plan</h2>
+            <h2>Workflow Builder</h2>
           </div>
-          <p class="section-lede">Use `custom_job` to build a stage sequence directly. Start from the default match template, then add, remove, and reorder stages.</p>
+          <p class="section-lede">Build a workflow by dropping stage cards onto the canvas, dragging them into place, and removing anything you do not need.</p>
           <div class="custom-stage-toolbar">
-            <select id="customStageSelect"></select>
-            <button id="addCustomStage" class="ghost">Add Stage</button>
             <button id="resetCustomStages" class="ghost">Reset To Match Template</button>
+            <select id="builderTemplateSelect"></select>
+            <button id="applyBuilderTemplate" class="ghost">Load Template</button>
           </div>
-          <div id="customStageDescription" class="workflow-detail-box compact-stage-detail"></div>
-          <div id="customStageList" class="custom-stage-list"></div>
+          <div id="customStageDescription" class="custom-stage-helper"></div>
+          <div id="stageLibrary" class="stage-library"></div>
+          <div id="customStageViewport" class="custom-stage-viewport">
+            <div class="custom-stage-zoom custom-stage-zoom-overlay">
+              <button id="zoomOutStages" class="ghost small" type="button">-</button>
+              <label class="custom-stage-zoom-label" for="customStageZoom">Zoom</label>
+              <input id="customStageZoom" type="range" min="70" max="140" step="5" value="100">
+              <button id="zoomInStages" class="ghost small" type="button">+</button>
+            </div>
+            <div id="customStageCanvas" class="custom-stage-canvas">
+              <svg id="customStageSvg" class="custom-stage-svg"></svg>
+              <div id="customStageList" class="custom-stage-list"></div>
+            </div>
+          </div>
         </section>
 
         <section class="grid">
@@ -234,7 +252,7 @@
           </div>
         </section>
 
-        <section class="panel options-panel">
+        <section id="matchRunControlsPanel" class="panel options-panel">
           <div class="panel-head">
             <h2>Run Controls</h2>
           </div>
@@ -257,7 +275,7 @@
               <div class="field-help">Strict mode makes the matcher less willing to trust weaker evidence. Turn it on when false matches are more dangerous than extra review work.</div>
             </div>
           </div>
-          <div class="quick-preset-bar">
+          <div id="quickPresetBar" class="quick-preset-bar">
             <div class="quick-preset-head">
               <strong>Quick presets</strong>
               <span>Pick a starting posture instead of editing raw numbers first.</span>
@@ -319,7 +337,7 @@
               </div>
             </div>
           </details>
-          <div class="threshold-card">
+          <div id="thresholdCard" class="threshold-card">
             <div class="threshold-head">
               <h3>Match Thresholds</h3>
               <p>Tune how aggressive the matcher should be when assigning confident, possible, and review decisions.</p>
@@ -354,7 +372,7 @@
             </div>
             <div class="progress-track"><div id="matchProgressBar" class="progress-bar"></div></div>
           </div>
-          <details class="preview">
+          <details id="jobSpecPanel" class="preview">
             <summary>Generated Job Spec Preview</summary>
             <textarea id="jobSpec" readonly></textarea>
           </details>

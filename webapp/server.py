@@ -510,6 +510,8 @@ class AppHandler(BaseHTTPRequestHandler):
             return self._json(200, load_preset(preset_name), head_only=head_only)
         if parsed.path.startswith("/api/workflows/"):
             workflow = parsed.path.split("/api/workflows/", 1)[1]
+            if not workflow:
+                return self._json(400, {"ok": False, "errors": ["Workflow name is required"]}, head_only=head_only)
             return self._json(200, describe_workflow(workflow), head_only=head_only)
         if parsed.path == "/api/headers":
             query = parse_qs(parsed.query)
