@@ -1,0 +1,14 @@
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+myenv/
+output/
+input/raw/
+input/normalized/
+webapp/uploads/
+data/raw/
+data/output/
+legacy/
+path/to/venv/
+test-results/

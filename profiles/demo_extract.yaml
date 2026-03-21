@@ -1,0 +1,27 @@
+profile: extract_projection
+
+description: >
+  Project a reduced donation-style export from the shipped synthetic legacy demo file.
+  Expected outcome with the shipped demo data: a smaller CSV with only positive-amount rows.
+
+inputs:
+  source:
+    path: demo_data/demo_legacy_members.csv
+    columns:
+      person_id: userID
+      first_name: FirstName
+      middle_name: MiddleName
+      last_name: LastName
+      created_at: LastDonationDate
+      amount: LastDonationReceiptableAmount
+
+outputs:
+  projection:
+    path: output/demo_last_donations_extract.csv
+    columns:
+      - person_id
+      - first_name
+      - middle_name
+      - last_name
+      - created_at
+      - amount

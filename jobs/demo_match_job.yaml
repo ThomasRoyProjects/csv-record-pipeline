@@ -1,0 +1,47 @@
+workflow: match_records_to_reference
+
+# Safe public demo:
+# Compare a canonical-style incoming file against a reference file.
+# Expected outcome with the shipped demo data:
+# - 600 confident matches
+# - 50 review records
+# - 350 unmatched records
+
+inputs:
+  primary:
+    path: demo_data/demo_match_primary.csv
+    columns:
+      person_id: person_id
+      first_name: first_name
+      middle_name: middle_name
+      last_name: last_name
+      primary_address1: primary_address1
+      primary_address2: primary_address2
+      mail_city: mail_city
+      mail_state: mail_state
+      mail_zip: mail_zip
+      email: email
+      phone: phone_number
+
+  reference:
+    path: demo_data/demo_match_reference.csv
+    columns:
+      person_id: userID
+      first_name: first_name
+      middle_name: middle_name
+      last_name: last_name
+      primary_address1: FullResidentialAddress
+      primary_address2: primary_address2
+      primary_city: primary_city
+      primary_state: primary_state
+      primary_zip: primary_zip
+      email: email
+      phone: PhoneNumber
+
+stages:
+  normalize: true
+  normalize_addresses: true
+
+outputs:
+  records:
+    base_dir: output/demo_match_job

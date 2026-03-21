@@ -1,0 +1,18 @@
+profile: split_alternating_rows
+
+description: >
+  Split the shipped synthetic outreach demo file into alternating outputs.
+  Expected outcome with the shipped demo data: 500 rows in file A and 500 rows in file B.
+
+inputs:
+  source:
+    path: demo_data/demo_split_source.csv
+
+split:
+  method: alternate
+  start_file: A
+
+outputs:
+  split:
+    path_a: output/demo_split_a.csv
+    path_b: output/demo_split_b.csv

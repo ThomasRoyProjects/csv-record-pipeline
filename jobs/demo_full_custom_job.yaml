@@ -1,0 +1,134 @@
+workflow: custom_job
+
+# Safe public demo:
+# Broader custom stage plan that exercises normalization, dedupe, matching,
+# address classification, contact aggregation, scoring, and both bundle + processed outputs.
+# Expected outcome with the shipped demo data:
+# - 600 confident matches
+# - 50 review records
+# - 350 unmatched records
+# - 1 duplicate removed
+# - 1 processed_records.csv export
+
+inputs:
+  primary:
+    path: demo_data/demo_process_members.csv
+    columns:
+      person_id: person_id
+      first_name: first_name
+      middle_name: middle_name
+      last_name: last_name
+      primary_address1: primary_address1
+      primary_address2: primary_address2
+      mail_city: mail_city
+      mail_state: mail_state
+      mail_zip: mail_zip
+      email: email
+      phone: phone_number
+      memb_start_date: memb_start_date
+      memb_exp_date: memb_exp_date
+  reference:
+    path: demo_data/demo_match_reference.csv
+    columns:
+      person_id: userID
+      first_name: first_name
+      middle_name: middle_name
+      last_name: last_name
+      primary_address1: FullResidentialAddress
+      primary_address2: primary_address2
+      primary_city: primary_city
+      primary_state: primary_state
+      primary_zip: primary_zip
+      email: email
+      phone: PhoneNumber
+
+stage_sequence:
+  - name: normalize_date_columns
+    config:
+      dataset_role: primary
+      columns:
+        - memb_start_date
+        - memb_exp_date
+  - name: normalize_addresses
+    config:
+      dataset_role: primary
+      mode: member
+      address1_col: primary_address1
+      address2_col: primary_address2
+      city_col: mail_city
+      state_col: mail_state
+      zip_col: mail_zip
+  - name: normalize_addresses
+    config:
+      dataset_role: reference
+      mode: voter
+      address1_col: primary_address1
+      address2_col: primary_address2
+      city_col: primary_city
+      state_col: primary_state
+      zip_col: primary_zip
+  - name: dedupe_records
+    config:
+      dataset_role: primary
+  - name: match_records
+    config:
+      primary_role: primary
+      reference_role: reference
+      mirror_matched_to: _matched_to_reference_demo
+      match_config:
+        primary_id_col: person_id
+        reference_id_col: person_id
+        primary_first_col: first_name
+        reference_first_col: first_name
+        primary_last_col: last_name
+        reference_last_col: last_name
+        primary_address_col: _address_norm
+        reference_address_col: _address_norm
+        primary_address1_col: primary_address1
+        reference_address1_col: primary_address1
+        primary_address2_col: primary_address2
+        reference_address2_col: primary_address2
+        primary_email_col: email
+        reference_email_col: email
+        primary_phone_col: phone
+        reference_phone_col: phone
+        confident_threshold: 160
+        possible_threshold: 120
+        review_threshold: 85
+        strict_mode: false
+  - name: classify_address_status
+    config:
+      dataset_role: primary
+  - name: aggregate_contacts
+    config:
+      dataset_role: primary
+  - name: score_priority
+    config:
+      dataset_role: primary
+  - name: write_records_bundle
+    config:
+      dataset_role: primary
+      base_dir: output/demo_full_custom_job
+      outputs:
+        matched_records:
+          match_status: CONFIDENT
+          filename: matched_records.csv
+        review_records:
+          match_status:
+            - POSSIBLE
+            - REVIEW
+          filename: review_records.csv
+        unmatched_records:
+          match_status: UNMATCHED
+          filename: unmatched_records.csv
+  - name: write_records_output
+    config:
+      source_kind: dataset
+      source_name: primary
+      output_key: processed_records
+      base_dir: output/demo_full_custom_job
+      filename: processed_records.csv
+
+outputs:
+  records:
+    base_dir: output/demo_full_custom_job

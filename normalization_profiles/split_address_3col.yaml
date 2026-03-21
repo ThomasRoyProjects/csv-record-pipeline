@@ -1,0 +1,28 @@
+description: >
+  Example normalization profile for source files where the mailing address
+  is split across three columns and city/state/postal fields need to be
+  mapped into canonical mailing fields.
+
+derive:
+  primary_address1:
+    strategy: join
+    columns:
+      - StreetNumber
+      - StreetName
+      - StreetType
+    separator: " "
+  primary_address2:
+    strategy: coalesce
+    columns:
+      - Unit
+      - Suite
+      - Apartment
+  mail_city:
+    strategy: copy
+    source: City
+  mail_state:
+    strategy: copy
+    source: Province
+  mail_zip:
+    strategy: copy
+    source: PostalCode

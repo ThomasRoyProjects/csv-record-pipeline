@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Record Pipeline Workbench</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Record Workbench</p>
+        <h1>Prep first. Match or run utilities next.</h1>
+        <p class="lede">Use Prep for one-file cleanup, Match for reconciliation flows, and Utilities for one-off operational jobs like split, projection, and enrichment.</p>
+      </section>
+
+      <section class="tabbar panel">
+        <button id="tabNormalize" class="tab-button active" type="button">Prep</button>
+        <button id="tabMatch" class="tab-button" type="button">Match</button>
+        <button id="tabUtilities" class="tab-button" type="button">Utilities</button>
+      </section>
+
+      <section id="normalizeTab" class="tab-panel active">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Prep File And Split Address Units</h2>
+            <button id="inspectNormalize" class="ghost">Inspect</button>
+          </div>
+          <p class="section-lede">Use Prep for one-file cleanup before matching or export. Choose a normalization profile, apply built-in address normalization and apartment/unit splitting, then download the cleaned result.</p>
+          <div class="demo-note">Shipped demo preloaded. You can replace it with your own CSV at any time.</div>
+          <div class="workflow-description-box">
+            <strong>Normalization is the safest place to remove superficial differences before matching, including unit-aware address cleanup.</strong>
+            <ul>
+              <li>Use profiles to join split address fields, copy one source column into a target field, or coalesce fallback columns.</li>
+              <li>Built-in address normalization also tries to split apartment-style addresses like <code>101-1232 Main Street</code> into <code>primary_address1=1232 Main Street</code> and <code>primary_address2=101</code>.</li>
+              <li>Use strict cleanup when you want text standardized for comparison by trimming whitespace, collapsing repeated spaces, and forcing case-insensitive text.</li>
+              <li>Run normalization first when messy source exports would otherwise create false “new” people.</li>
+            </ul>
+          </div>
+          <div class="grid">
+            <div>
+              <label class="field-label" for="normalizeInputFile">Source CSV</label>
+              <input id="normalizeInputFile" type="file" accept=".csv,text/csv">
+              <div id="normalizeInputStatus" class="file-status">No file selected.</div>
+              <div id="normalizePathErrors" class="inline-errors"></div>
+            </div>
+            <div>
+              <label class="field-label" for="normalizeOutputName">Output File Name</label>
+              <input id="normalizeOutputName" type="text" placeholder="source_normalized.csv">
+              <div class="file-status">Saved automatically to <code>input/normalized</code></div>
+              <label class="toggle-card"><input id="normalizeStrictCleanup" type="checkbox"> Apply strict text cleanup for matching</label>
+              <div id="normalizeOutputErrors" class="inline-errors"></div>
+            </div>
+          </div>
+          <div class="grid">
+            <div class="normalization-card">
+              <div class="step-chip">Profile + Built-In Address Split</div>
+              <label class="field-label" for="normalizeProfileSelect">Custom Normalization Profile</label>
+              <select id="normalizeProfileSelect"></select>
+              <div id="normalizeProfileMeta" class="profile-meta">No custom normalization profile selected. Built-in address normalization and unit splitting still run during matching-oriented cleanup.</div>
+            </div>
+            <div class="normalization-card">
+              <div class="step-chip">Headers</div>
+              <pre id="normalizeHeaders" class="codebox"></pre>
+            </div>
+          </div>
+          <div class="mapping-block top-gap">
+            <div class="mapping-head">
+              <h3>Normalization Mapping</h3>
+              <button id="applyNormalizeSuggestions" class="ghost small">Apply Suggestions</button>
+            </div>
+            <p class="section-lede">Map source columns into canonical fields before normalization. Built-in address splitting uses these canonical fields directly, so this is the safest way to control how messy files are cleaned.</p>
+            <div id="normalizeMappingForm" class="mapping-form"></div>
+            <div id="normalizeMappingErrors" class="inline-errors"></div>
+          </div>
+          <div class="actions top-gap">
+            <button id="runNormalize">Run Normalization</button>
+          </div>
+          <div id="normalizeProgress" class="progress-shell hidden">
+            <div class="progress-top">
+              <strong id="normalizeProgressLabel">Preparing normalization...</strong>
+              <span id="normalizeProgressValue">0%</span>
+            </div>
+            <div class="progress-track"><div id="normalizeProgressBar" class="progress-bar"></div></div>
+          </div>
+          <pre id="normalizeResultBox" class="codebox result"></pre>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Custom Normalization Profile</h2>
+          </div>
+          <p class="section-lede">Build reusable profiles for weird imports, such as addresses split across multiple columns or fallback fields spread across inconsistent source sheets.</p>
+          <div class="strategy-guide">
+            <div class="strategy-item">
+              <strong>`copy`</strong>
+              <span>Use one source column as-is.</span>
+            </div>
+            <div class="strategy-item">
+              <strong>`join`</strong>
+              <span>Combine several source columns into one field, such as street number plus street name.</span>
+            </div>
+            <div class="strategy-item">
+              <strong>`coalesce`</strong>
+              <span>Take the first non-empty value from several possible source columns.</span>
+            </div>
+          </div>
+          <div class="grid">
+            <div>
+              <label class="field-label" for="customProfileName">Profile Name</label>
+              <input id="customProfileName" type="text" placeholder="join_address_columns">
+            </div>
+            <div>
+              <label class="field-label" for="customProfileTarget">Suggested Target Field</label>
+              <input id="customProfileTarget" type="text" placeholder="primary_address1">
+            </div>
+          </div>
+          <div id="customProfileRows" class="custom-profile-rows"></div>
+          <div class="actions top-gap">
+            <button id="addProfileRule" class="ghost">Add Rule</button>
+            <button id="saveCustomProfile">Save Profile</button>
+          </div>
+          <div id="customProfileErrors" class="inline-errors"></div>
+          <pre id="customProfilePreview" class="codebox result"></pre>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Normalized Output</h2>
+          </div>
+          <div id="normalizeDownloadArea" class="download-box">Run normalization to generate a downloadable CSV.</div>
+          <div class="preview-note">Previewing the first rows helps verify that address joins, coalesced fields, and copied columns did what you expected before matching.</div>
+          <div id="normalizedPreview" class="preview-table-wrap"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Input Library</h2>
+          </div>
+          <p class="section-lede">Raw source files and normalized intermediates are saved inside the project so they can be reused later.</p>
+          <div class="grid">
+            <div>
+              <h3 class="subhead">Raw Inputs</h3>
+              <div id="inventoryInputs" class="inventory-list"></div>
+            </div>
+            <div>
+              <h3 class="subhead">Normalized Files</h3>
+              <div id="inventoryNormalized" class="inventory-list"></div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section id="matchTab" class="tab-panel">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Workflow</h2>
+            <div class="actions">
+              <button id="openMatchHelp" class="ghost" type="button" aria-haspopup="dialog" aria-controls="matchHelpModal">?</button>
+              <button id="refreshWorkflows" class="ghost">Refresh</button>
+              <button id="syncPreview" class="ghost">Sync Preview</button>
+            </div>
+          </div>
+          <select id="workflowSelect"></select>
+          <div id="workflowErrors" class="inline-errors"></div>
+          <div class="demo-note">Shipped demo files are preloaded for the selected workflow so you can run the app immediately.</div>
+          <div id="workflowDescription" class="workflow-detail-box"></div>
+          <div id="matchContract" class="contract-box"></div>
+          <div class="preset-bar">
+            <select id="presetSelect"></select>
+            <input id="presetName" type="text" placeholder="name for saved configuration">
+            <button id="loadPreset" class="ghost small">Load Saved Config</button>
+            <button id="savePreset" class="ghost small">Save Current Config</button>
+          </div>
+          <div id="presetHelp" class="file-status">Saved configurations let you reuse one workflow setup later. Enter a name, click save, then it will appear in the list.</div>
+          <pre id="workflowMeta" class="codebox"></pre>
+        </section>
+
+        <section id="customStagePanel" class="panel hidden">
+          <div class="panel-head">
+            <h2>Custom Stage Plan</h2>
+          </div>
+          <p class="section-lede">Use `custom_job` to build a stage sequence directly. Start from the default match template, then add, remove, and reorder stages.</p>
+          <div class="custom-stage-toolbar">
+            <select id="customStageSelect"></select>
+            <button id="addCustomStage" class="ghost">Add Stage</button>
+            <button id="resetCustomStages" class="ghost">Reset To Match Template</button>
+          </div>
+          <div id="customStageDescription" class="workflow-detail-box compact-stage-detail"></div>
+          <div id="customStageList" class="custom-stage-list"></div>
+        </section>
+
+        <section class="grid">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Primary File</h2>
+              <button id="inspectPrimary" class="ghost">Inspect</button>
+            </div>
+            <input id="primaryFile" type="file" accept=".csv,text/csv">
+            <div id="primaryFileStatus" class="file-status">No file selected.</div>
+            <div id="primaryPathErrors" class="inline-errors"></div>
+            <pre id="primaryHeaders" class="codebox"></pre>
+            <div id="primaryHeaderGroups" class="header-groups"></div>
+            <div class="mapping-block">
+              <div class="mapping-head">
+                <h3>Primary Mapping</h3>
+                <button id="applyPrimarySuggestions" class="ghost small">Apply Suggestions</button>
+              </div>
+              <p class="section-lede">Pick a primary source column and optional fallbacks. The first non-empty mapped value wins.</p>
+              <div id="primaryMappingForm" class="mapping-form"></div>
+              <div id="primaryMappingErrors" class="inline-errors"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Reference File</h2>
+              <button id="inspectReference" class="ghost">Inspect</button>
+            </div>
+            <input id="referenceFile" type="file" accept=".csv,text/csv">
+            <div id="referenceFileStatus" class="file-status">No file selected.</div>
+            <div id="referencePathErrors" class="inline-errors"></div>
+            <pre id="referenceHeaders" class="codebox"></pre>
+            <div id="referenceHeaderGroups" class="header-groups"></div>
+            <div class="mapping-block">
+              <div class="mapping-head">
+                <h3>Reference Mapping</h3>
+                <button id="applyReferenceSuggestions" class="ghost small">Apply Suggestions</button>
+              </div>
+              <p class="section-lede">Use fallbacks when exports scatter address data across mailing, primary, or alternate address families.</p>
+              <div id="referenceMappingForm" class="mapping-form"></div>
+              <div id="referenceMappingErrors" class="inline-errors"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel options-panel">
+          <div class="panel-head">
+            <h2>Run Controls</h2>
+          </div>
+          <p class="section-lede">This section controls where files are written and how aggressive the matcher is allowed to be. If you are not troubleshooting match behavior, you usually only need to confirm the output folder and leave the thresholds alone.</p>
+          <div class="grid controls-grid">
+            <div>
+              <label class="field-label" for="outputPath">Output Directory</label>
+              <input id="outputPath" type="text" placeholder="output/webapp_runs/workflow_name">
+              <div class="field-help">The app writes all generated CSVs and the run summary into this folder. Use a dedicated folder per run or workflow so outputs do not blur together.</div>
+              <div id="outputErrors" class="inline-errors"></div>
+            </div>
+            <div>
+              <div class="workflow-description-box compact">
+                <strong>Workflow note</strong>
+                <p>Use the <strong>Prep</strong> tab first if your files need cleanup. Utilities such as split and projection do not require a matching workflow.</p>
+              </div>
+              <div class="toggles top-gap">
+                <label><input id="strictMatchMode" type="checkbox"> Strict Match Mode</label>
+              </div>
+              <div class="field-help">Strict mode makes the matcher less willing to trust weaker evidence. Turn it on when false matches are more dangerous than extra review work.</div>
+            </div>
+          </div>
+          <div class="quick-preset-bar">
+            <div class="quick-preset-head">
+              <strong>Quick presets</strong>
+              <span>Pick a starting posture instead of editing raw numbers first.</span>
+            </div>
+            <div class="quick-preset-actions">
+              <button id="presetConservative" class="ghost small" type="button">Conservative</button>
+              <button id="presetBalanced" class="ghost small" type="button">Balanced</button>
+              <button id="presetAggressive" class="ghost small" type="button">Aggressive</button>
+            </div>
+          </div>
+          <details class="more-settings">
+            <summary>More Settings</summary>
+            <div class="workflow-detail-box compact-stage-detail">
+              <div class="workflow-detail-grid run-controls-grid">
+                <section class="workflow-detail-section">
+                  <h4>Output directory</h4>
+                  <p>This is the destination for everything the run writes.</p>
+                  <ul>
+                    <li>Use it when you want this run isolated from older outputs.</li>
+                    <li>Keep one folder per job or per investigation if you want cleaner review later.</li>
+                  </ul>
+                </section>
+                <section class="workflow-detail-section">
+                  <h4>Strict match mode</h4>
+                  <p>This makes the matcher more conservative.</p>
+                  <ul>
+                    <li>Use it when bad matches would be costly.</li>
+                    <li>Leave it off when you want the normal scoring behavior and are willing to review gray-area rows.</li>
+                  </ul>
+                </section>
+                <section class="workflow-detail-section">
+                  <h4>Thresholds</h4>
+                  <p>These numbers control how much evidence is needed before a row moves into a stronger match bucket.</p>
+                  <ul>
+                    <li><strong>Confident</strong>: score needed to call a row a clear match.</li>
+                    <li><strong>Possible</strong>: score range where the matcher sees meaningful evidence but not enough for a confident call.</li>
+                    <li><strong>Review</strong>: the lowest score that still gets surfaced for human inspection instead of being treated as unmatched.</li>
+                  </ul>
+                </section>
+                <section class="workflow-detail-section">
+                  <h4>Score scale</h4>
+                  <p>The matcher uses a few-hundred-point score, not a 1 to 10 scale and not giant numbers like 100000.</p>
+                  <ul>
+                    <li><strong>0 to 80</strong>: weak evidence or no reliable match support.</li>
+                    <li><strong>85 to 119</strong>: low-confidence review territory.</li>
+                    <li><strong>120 to 159</strong>: stronger possible-match territory.</li>
+                    <li><strong>160+</strong>: strong evidence and eligible for confident classification when the rule checks agree.</li>
+                    <li><strong>Typical strong exact-ID or name-plus-address cases</strong> often land somewhere in the 160 to 250+ range.</li>
+                  </ul>
+                </section>
+                <section class="workflow-detail-section workflow-detail-warning">
+                  <h4>Default advice</h4>
+                  <ul>
+                    <li>Do not tune thresholds first. Fix mappings and normalization first.</li>
+                    <li>If the review bucket is too large, that usually means the inputs are messy or the mappings are incomplete.</li>
+                    <li>If you only want safe new people, be careful about lowering thresholds too aggressively.</li>
+                  </ul>
+                </section>
+              </div>
+            </div>
+          </details>
+          <div class="threshold-card">
+            <div class="threshold-head">
+              <h3>Match Thresholds</h3>
+              <p>Tune how aggressive the matcher should be when assigning confident, possible, and review decisions.</p>
+            </div>
+            <div class="threshold-grid">
+              <label>
+                <span class="field-label">Confident</span>
+                <input id="confidentThreshold" type="number" value="160">
+                <div class="field-help">Higher means fewer rows get promoted to clear matches.</div>
+              </label>
+              <label>
+                <span class="field-label">Possible</span>
+                <input id="possibleThreshold" type="number" value="120">
+                <div class="field-help">This is the middle bucket for stronger maybe-matches.</div>
+              </label>
+              <label>
+                <span class="field-label">Review</span>
+                <input id="reviewThreshold" type="number" value="85">
+                <div class="field-help">Rows below this floor fall into unmatched instead of review.</div>
+              </label>
+            </div>
+            <div class="field-help top-gap">Reference scale: exact-ID support alone is worth about 130 points, exact full normalized address is worth about 70, exact email about 45, and exact phone about 35. That is why values like 85, 120, and 160 are meaningful here.</div>
+          </div>
+          <div class="actions top-gap">
+            <button id="validateJob" class="ghost">Validate</button>
+            <button id="runJob">Run</button>
+          </div>
+          <div id="matchProgress" class="progress-shell hidden">
+            <div class="progress-top">
+              <strong id="matchProgressLabel">Preparing match run...</strong>
+              <span id="matchProgressValue">0%</span>
+            </div>
+            <div class="progress-track"><div id="matchProgressBar" class="progress-bar"></div></div>
+          </div>
+          <details class="preview">
+            <summary>Generated Job Spec Preview</summary>
+            <textarea id="jobSpec" readonly></textarea>
+          </details>
+          <pre id="resultBox" class="codebox result"></pre>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Latest Result</h2>
+          </div>
+          <div id="summaryCards" class="summary-cards"></div>
+          <div class="grid">
+            <div>
+              <h3 class="subhead">Outputs</h3>
+              <div id="summaryOutputs" class="summary-list"></div>
+            </div>
+            <div>
+              <h3 class="subhead">Match Breakdown</h3>
+              <div id="summaryReasons" class="summary-list"></div>
+            </div>
+          </div>
+          <div>
+            <h3 class="subhead">Match Inputs Used</h3>
+            <div id="summaryMatchInputs" class="summary-list"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Project Files</h2>
+          </div>
+          <p class="section-lede">Pick from staged input files or review recently generated outputs without leaving the app.</p>
+          <div class="grid">
+            <div>
+              <h3 class="subhead">Available Inputs</h3>
+              <div id="inventoryMatchInputs" class="inventory-list"></div>
+            </div>
+            <div>
+              <div class="subhead-row">
+                <h3 class="subhead">Recent Outputs</h3>
+                <button id="deleteAllOutputs" class="ghost small" type="button">Delete All</button>
+              </div>
+              <div id="inventoryOutputs" class="inventory-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="matchPreviewPanel" class="panel">
+          <div class="panel-head">
+            <h2>Preview Rows</h2>
+          </div>
+          <div class="review-note">
+            Review rows prioritize `_match_score`, `_match_reason`, and `_match_explanation` so you can inspect why the matcher hesitated.
+          </div>
+          <div class="grid">
+            <div>
+              <h3 class="subhead">Review Records</h3>
+              <div id="reviewPreview" class="preview-table-wrap"></div>
+            </div>
+            <div>
+              <h3 class="subhead">Unmatched Records</h3>
+              <div id="unmatchedPreview" class="preview-table-wrap"></div>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <div id="matchHelpModal" class="modal-shell hidden" role="dialog" aria-modal="true" aria-labelledby="matchHelpTitle">
+      <div class="modal-backdrop" data-close-match-help="true"></div>
+      <section class="modal-card">
+        <div class="panel-head">
+          <h2 id="matchHelpTitle">Custom Matching Help</h2>
+          <button id="closeMatchHelp" class="ghost" type="button">Close</button>
+        </div>
+        <div class="modal-body">
+          <p><strong>`primary` is the file you want to classify. `reference` is the file you trust as the comparison baseline.</strong></p>
+          <p>Use `custom_job` when presets are too specific. The safest default stage order is:</p>
+          <ol class="modal-list">
+            <li>`normalize_addresses` on `primary`</li>
+            <li>`normalize_addresses` on `reference`</li>
+            <li>`match_records`</li>
+            <li>`write_records_bundle`</li>
+          </ol>
+          <p>Map these first:</p>
+          <ul class="modal-list">
+            <li>`person_id` if a shared ID exists</li>
+            <li>`first_name`</li>
+            <li>`last_name`</li>
+            <li>`primary_address1`</li>
+          </ul>
+          <p>Add fallback mappings when address data is split across `mailing_*`, `primary_*`, or alternate families like `address_*`.</p>
+          <p>After running, check `run_summary.json`, the review bucket size, and exact-ID overlap on unmatched rows when both sides have a meaningful shared ID.</p>
+          <p>Longer write-up: see `CUSTOM_MATCHING_GUIDE.md` in the repo.</p>
+        </div>
+      </section>
+    </div>
+
+    <div id="dangerModal" class="modal-shell hidden" role="dialog" aria-modal="true" aria-labelledby="dangerModalTitle">
+      <div class="modal-backdrop" data-close-danger-modal="true"></div>
+      <section class="modal-card danger-modal">
+        <div class="panel-head">
+          <h2 id="dangerModalTitle">Confirm Delete</h2>
+          <button id="closeDangerModal" class="ghost" type="button">Close</button>
+        </div>
+        <div class="modal-body">
+          <p id="dangerModalMessage">Are you sure?</p>
+          <div class="actions">
+            <button id="cancelDangerModal" class="ghost" type="button">Cancel</button>
+            <button id="confirmDangerModal" class="danger-button" type="button">Delete</button>
+          </div>
+        </div>
+      </section>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>

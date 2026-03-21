@@ -1,0 +1,38 @@
+profile: enrich_records_from_reference
+
+description: >
+  Enrich the shipped synthetic primary demo file from the shipped reference demo file
+  using the shared synthetic user identifier.
+  Expected outcome with the shipped demo data: one enriched CSV with a new reference_segment column across a much larger demo set.
+
+inputs:
+  primary:
+    paths:
+      - demo_data/demo_match_primary.csv
+    columns:
+      person_id: person_id
+
+  reference:
+    paths:
+      - demo_data/demo_match_reference.csv
+    columns:
+      person_id: userID
+      reference_segment: reference_segment
+
+stages:
+  normalize: false
+  normalize_addresses: false
+  reconcile_identity: false
+  match_reference: false
+  enrich_from_voters: true
+  export_records: true
+
+enrich:
+  from_reference:
+    join_on: person_id
+    take_columns:
+      - reference_segment
+
+outputs:
+  records:
+    base_dir: output/demo_enrich_job
