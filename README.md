@@ -4,6 +4,14 @@ Pipeline is a local, YAML-driven record processing system for messy CSV exports.
 
 It is designed to help an operator take inconsistent source files, normalize them into canonical fields, compare them against a reference dataset, score likely matches, and export clean review-ready outputs without relying on a remote backend.
 
+<p align="center">
+  <img src="docs/Pipeline1.png" width="900" alt="Pipeline web app overview">
+</p>
+
+<p align="center">
+  <img src="docs/Pipeline2.png" width="900" alt="Pipeline workflow builder view">
+</p>
+
 The project includes:
 
 - a Python CLI for repeatable jobs
