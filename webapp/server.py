@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import json
 import mimetypes
 import sys
@@ -42,8 +43,16 @@ INPUT_RAW_ROOT = INPUT_ROOT / "raw"
 INPUT_NORMALIZED_ROOT = INPUT_ROOT / "normalized"
 OUTPUT_ROOT = PROJECT_ROOT / "output"
 OUTPUT_RUNS_ROOT = OUTPUT_ROOT / "webapp_runs"
+DEMO_ROOT = PROJECT_ROOT / "demo_data"
+MANAGED_READ_ROOTS = (DEMO_ROOT, INPUT_ROOT, OUTPUT_ROOT)
+MANAGED_RUNTIME_INPUT_ROOTS = (DEMO_ROOT, INPUT_ROOT)
+MANAGED_RUNTIME_OUTPUT_ROOT = OUTPUT_ROOT
+MAX_ASYNC_JOBS = 2
+JOB_RETENTION_SECONDS = 3600
+JOB_HISTORY_LIMIT = 100
 JOB_LOCK = threading.Lock()
 JOB_REGISTRY: dict[str, dict] = {}
+JOB_EXECUTOR = ThreadPoolExecutor(max_workers=MAX_ASYNC_JOBS)
 
 
 def list_normalization_profiles() -> list[dict]:
@@ -147,12 +156,81 @@ def _path_is_within(path: Path, root: Path) -> bool:
         return False
 
 
+def _resolve_request_path(path_value: str | Path, *, roots: tuple[Path, ...], must_exist: bool = True) -> Path:
+    if not str(path_value).strip():
+        raise ValueError("A file path is required")
+    candidate = Path(path_value)
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    resolved = candidate.resolve()
+    if not any(_path_is_within(resolved, root) for root in roots):
+        raise ValueError("Path is outside managed project directories")
+    if must_exist and not resolved.exists():
+        raise FileNotFoundError(f"File not found: {resolved}")
+    return resolved
+
+
+def _resolve_runtime_dataset_paths(runtime: dict) -> dict:
+    runtime = json.loads(json.dumps(runtime))
+    for dataset_cfg in runtime.get("inputs", {}).values():
+        path_value = dataset_cfg.get("path")
+        if isinstance(path_value, str) and path_value:
+            dataset_cfg["path"] = str(
+                _resolve_request_path(path_value, roots=MANAGED_RUNTIME_INPUT_ROOTS, must_exist=True)
+            )
+        paths_value = dataset_cfg.get("paths")
+        if isinstance(paths_value, list):
+            dataset_cfg["paths"] = [
+                str(_resolve_request_path(path_item, roots=MANAGED_RUNTIME_INPUT_ROOTS, must_exist=True))
+                for path_item in paths_value
+                if path_item
+            ]
+
+    for output_cfg in runtime.get("outputs", {}).values():
+        if not isinstance(output_cfg, dict):
+            continue
+        for key in ("base_dir", "path", "path_a", "path_b"):
+            value = output_cfg.get(key)
+            if isinstance(value, str) and value:
+                output_cfg[key] = str(
+                    _resolve_request_path(value, roots=(MANAGED_RUNTIME_OUTPUT_ROOT,), must_exist=False)
+                )
+    return runtime
+
+
+def _prune_job_registry(*, now: float | None = None) -> None:
+    cutoff = (now or time.time()) - JOB_RETENTION_SECONDS
+    with JOB_LOCK:
+        stale_ids = [
+            job_id
+            for job_id, job in JOB_REGISTRY.items()
+            if job.get("status") in {"completed", "failed"} and job.get("updated_at", 0) < cutoff
+        ]
+        for job_id in stale_ids:
+            JOB_REGISTRY.pop(job_id, None)
+
+        if len(JOB_REGISTRY) <= JOB_HISTORY_LIMIT:
+            return
+
+        removable = sorted(
+            (
+                (job.get("updated_at", 0), job_id)
+                for job_id, job in JOB_REGISTRY.items()
+                if job.get("status") in {"completed", "failed"}
+            )
+        )
+        overflow = len(JOB_REGISTRY) - JOB_HISTORY_LIMIT
+        for _, job_id in removable[:overflow]:
+            JOB_REGISTRY.pop(job_id, None)
+
+
 def delete_managed_file(path_value: str) -> dict:
-    path = Path(path_value).resolve()
-    allowed_roots = [INPUT_RAW_ROOT.resolve(), INPUT_NORMALIZED_ROOT.resolve(), OUTPUT_ROOT.resolve()]
-    if not any(_path_is_within(path, root) for root in allowed_roots):
-        raise ValueError("Refusing to delete a file outside managed project directories")
-    if not path.exists() or not path.is_file():
+    path = _resolve_request_path(
+        path_value,
+        roots=(INPUT_RAW_ROOT, INPUT_NORMALIZED_ROOT, OUTPUT_ROOT),
+        must_exist=True,
+    )
+    if not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
     path.unlink()
     return {"ok": True, "deleted_path": str(path)}
@@ -191,10 +269,11 @@ def list_stage_definitions() -> list[dict]:
 def load_run_summary(summary_path: Path) -> dict | None:
     if not summary_path.exists():
         return None
-    return json.loads(summary_path.read_text())
+    return json.loads(summary_path.read_text(encoding="utf-8"))
 
 
 def _job_payload(job_id: str) -> dict:
+    _prune_job_registry()
     with JOB_LOCK:
         job = dict(JOB_REGISTRY.get(job_id, {}))
     if not job:
@@ -211,6 +290,7 @@ def _job_payload(job_id: str) -> dict:
 
 
 def start_runtime_job(runtime: dict) -> dict:
+    _prune_job_registry()
     job_id = uuid4().hex
     now = time.time()
     with JOB_LOCK:
@@ -247,9 +327,10 @@ def start_runtime_job(runtime: dict) -> dict:
                 job["status"] = "failed"
                 job["updated_at"] = time.time()
                 job["errors"] = [str(exc)]
+        finally:
+            _prune_job_registry()
 
-    thread = threading.Thread(target=_runner, daemon=True)
-    thread.start()
+    JOB_EXECUTOR.submit(_runner)
     return _job_payload(job_id)
 
 
@@ -372,9 +453,11 @@ def run_normalization(
     columns: dict | None = None,
 ) -> dict:
     ensure_app_dirs()
-    source_path = Path(input_path)
-    if not source_path.exists():
-        raise FileNotFoundError(f"Source file not found: {input_path}")
+    source_path = _resolve_request_path(
+        input_path,
+        roots=(DEMO_ROOT, INPUT_RAW_ROOT, INPUT_NORMALIZED_ROOT),
+        must_exist=True,
+    )
     output = build_normalized_output_path(source_path, profile_name, output_name)
     if not columns:
         columns = suggest_mappings(inspect_headers(str(source_path)))
@@ -413,28 +496,18 @@ def build_normalized_output_path(source_path: Path, profile_name: str, output_na
         requested_name = f"{source_path.stem}_{suffix}.csv"
     if not requested_name.lower().endswith(".csv"):
         requested_name = f"{requested_name}.csv"
-
-    candidate = INPUT_NORMALIZED_ROOT / requested_name
-    if not candidate.exists():
-        return candidate
-
-    stem = candidate.stem
-    extension = candidate.suffix
-    counter = 2
-    while True:
-        next_candidate = candidate.with_name(f"{stem}_{counter}{extension}")
-        if not next_candidate.exists():
-            return next_candidate
-        counter += 1
+    return INPUT_NORMALIZED_ROOT / requested_name
 
 
 def save_uploaded_file(filename: str, content: str) -> dict:
     safe_name = Path(filename or "upload.csv").name
-    stem = Path(safe_name).stem or "upload"
-    suffix = Path(safe_name).suffix or ".csv"
+    if not safe_name:
+        safe_name = "upload.csv"
+    if not Path(safe_name).suffix:
+        safe_name = f"{safe_name}.csv"
     ensure_app_dirs()
-    stored_path = INPUT_RAW_ROOT / f"{stem}_{uuid4().hex[:8]}{suffix}"
-    stored_path.write_text(content)
+    stored_path = INPUT_RAW_ROOT / safe_name
+    stored_path.write_text(content, encoding="utf-8")
     return {
         "filename": safe_name,
         "stored_path": str(stored_path),
@@ -450,6 +523,9 @@ class AppHandler(BaseHTTPRequestHandler):
         self.end_headers()
         if not head_only:
             self.wfile.write(body)
+
+    def _json_error(self, status: int, message: str, *, head_only: bool = False) -> None:
+        self._json(status, {"ok": False, "errors": [message]}, head_only=head_only)
 
     def _text_file(self, path: Path, *, head_only: bool = False) -> None:
         if not path.exists() or not path.is_file():
@@ -468,6 +544,26 @@ class AppHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length) if length else b"{}"
         return json.loads(body.decode("utf-8"))
+
+    def _query_params(self) -> dict[str, list[str]]:
+        return parse_qs(urlparse(self.path).query)
+
+    def _query_value(self, key: str, *, default: str = "") -> str:
+        return self._query_params().get(key, [default])[0]
+
+    def _managed_query_path(
+        self,
+        *,
+        roots: tuple[Path, ...],
+        must_exist: bool = True,
+        key: str = "path",
+    ) -> Path:
+        return _resolve_request_path(self._query_value(key), roots=roots, must_exist=must_exist)
+
+    def _runtime_from_request(self) -> dict:
+        payload = self._read_json_body()
+        runtime = build_runtime_config(payload, root_dir=ROOT)
+        return _resolve_runtime_dataset_paths(runtime)
 
     def _run_runtime_job(self, runtime: dict) -> dict:
         errors = validate_runtime_config(runtime)
@@ -511,45 +607,56 @@ class AppHandler(BaseHTTPRequestHandler):
         if parsed.path.startswith("/api/workflows/"):
             workflow = parsed.path.split("/api/workflows/", 1)[1]
             if not workflow:
-                return self._json(400, {"ok": False, "errors": ["Workflow name is required"]}, head_only=head_only)
+                return self._json_error(400, "Workflow name is required", head_only=head_only)
             return self._json(200, describe_workflow(workflow), head_only=head_only)
         if parsed.path == "/api/headers":
-            query = parse_qs(parsed.query)
-            path = query.get("path", [""])[0]
-            return self._json(200, {"headers": inspect_headers(path)}, head_only=head_only)
+            try:
+                path = self._managed_query_path(roots=MANAGED_READ_ROOTS)
+                return self._json(200, {"headers": inspect_headers(str(path))}, head_only=head_only)
+            except Exception as exc:
+                return self._json_error(400, str(exc), head_only=head_only)
         if parsed.path == "/api/suggest-mapping":
-            query = parse_qs(parsed.query)
-            path = query.get("path", [""])[0]
-            headers = inspect_headers(path)
-            return self._json(
-                200,
-                {
-                    "headers": headers,
-                    "suggestions": suggest_mappings(headers),
-                    "groups": classify_headers(headers),
-                },
-                head_only=head_only,
-            )
+            try:
+                path = self._managed_query_path(roots=MANAGED_READ_ROOTS)
+                headers = inspect_headers(str(path))
+                return self._json(
+                    200,
+                    {
+                        "headers": headers,
+                        "suggestions": suggest_mappings(headers),
+                        "groups": classify_headers(headers),
+                    },
+                    head_only=head_only,
+                )
+            except Exception as exc:
+                return self._json_error(400, str(exc), head_only=head_only)
         if parsed.path == "/api/run-summary":
-            query = parse_qs(parsed.query)
-            path = query.get("path", [""])[0]
-            return self._json(200, {"summary": load_run_summary(Path(path))}, head_only=head_only)
+            try:
+                path = self._managed_query_path(roots=(OUTPUT_ROOT,))
+                return self._json(200, {"summary": load_run_summary(path)}, head_only=head_only)
+            except Exception as exc:
+                return self._json_error(400, str(exc), head_only=head_only)
         if parsed.path == "/api/job-status":
-            query = parse_qs(parsed.query)
-            job_id = query.get("id", [""])[0]
+            job_id = self._query_value("id")
             payload = _job_payload(job_id)
             if not payload:
-                return self._json(404, {"ok": False, "errors": [f"Unknown job id: {job_id}"]}, head_only=head_only)
+                return self._json_error(404, f"Unknown job id: {job_id}", head_only=head_only)
             return self._json(200, payload, head_only=head_only)
         if parsed.path == "/api/preview-csv":
-            query = parse_qs(parsed.query)
-            path = query.get("path", [""])[0]
-            limit = int(query.get("limit", ["10"])[0])
-            return self._json(200, preview_csv(Path(path), limit=limit), head_only=head_only)
+            try:
+                path = self._managed_query_path(roots=MANAGED_READ_ROOTS)
+                limit = int(self._query_value("limit", default="10"))
+                if limit < 1:
+                    raise ValueError("Preview limit must be at least 1")
+                return self._json(200, preview_csv(path, limit=limit), head_only=head_only)
+            except Exception as exc:
+                return self._json_error(400, str(exc), head_only=head_only)
         if parsed.path == "/api/download-file":
-            query = parse_qs(parsed.query)
-            path = query.get("path", [""])[0]
-            return self._text_file(Path(path), head_only=head_only)
+            try:
+                path = self._managed_query_path(roots=MANAGED_READ_ROOTS)
+                return self._text_file(path, head_only=head_only)
+            except Exception as exc:
+                return self._json_error(400, str(exc), head_only=head_only)
 
         self.send_error(404)
 
@@ -561,24 +668,30 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if self.path == "/api/validate-job":
-            payload = self._read_json_body()
-            runtime = build_runtime_config(payload, root_dir=ROOT)
-            errors = validate_runtime_config(runtime)
-            return self._json(200, {"runtime": runtime, "errors": errors})
+            try:
+                runtime = self._runtime_from_request()
+                errors = validate_runtime_config(runtime)
+                return self._json(200, {"runtime": runtime, "errors": errors})
+            except Exception as exc:
+                return self._json_error(400, str(exc))
 
         if self.path == "/api/run-job":
-            payload = self._read_json_body()
-            runtime = build_runtime_config(payload, root_dir=ROOT)
+            try:
+                runtime = self._runtime_from_request()
+            except Exception as exc:
+                return self._json_error(400, str(exc))
             result = self._run_runtime_job(runtime)
             return self._json(200 if result.get("ok") else 400, result)
 
         if self.path == "/api/run-job-async":
-            payload = self._read_json_body()
-            runtime = build_runtime_config(payload, root_dir=ROOT)
-            errors = validate_runtime_config(runtime)
-            if errors:
-                return self._json(400, {"ok": False, "errors": errors})
-            return self._json(200, {"ok": True, **start_runtime_job(runtime)})
+            try:
+                runtime = self._runtime_from_request()
+                errors = validate_runtime_config(runtime)
+                if errors:
+                    return self._json(400, {"ok": False, "errors": errors})
+                return self._json(200, {"ok": True, **start_runtime_job(runtime)})
+            except Exception as exc:
+                return self._json_error(400, str(exc))
 
         if self.path == "/api/save-preset":
             payload = self._read_json_body()
@@ -592,7 +705,7 @@ class AppHandler(BaseHTTPRequestHandler):
             filename = payload.get("filename", "")
             content = payload.get("content", "")
             if not filename:
-                return self._json(400, {"ok": False, "errors": ["Filename is required"]})
+                return self._json_error(400, "Filename is required")
             saved = save_uploaded_file(filename, content)
             return self._json(200, {"ok": True, **saved})
 
@@ -602,14 +715,14 @@ class AppHandler(BaseHTTPRequestHandler):
             try:
                 result = delete_managed_file(path_value)
             except Exception as exc:
-                return self._json(400, {"ok": False, "errors": [str(exc)]})
+                return self._json_error(400, str(exc))
             return self._json(200, result)
 
         if self.path == "/api/delete-all-outputs":
             try:
                 result = delete_all_managed_outputs()
             except Exception as exc:
-                return self._json(400, {"ok": False, "errors": [str(exc)]})
+                return self._json_error(400, str(exc))
             return self._json(200, result)
 
         if self.path == "/api/run-normalization":
@@ -623,7 +736,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     columns=payload.get("columns"),
                 )
             except Exception as exc:
-                return self._json(400, {"ok": False, "errors": [str(exc)]})
+                return self._json_error(400, str(exc))
             return self._json(200, result)
 
         if self.path == "/api/save-normalization-profile":
@@ -633,7 +746,7 @@ class AppHandler(BaseHTTPRequestHandler):
             try:
                 saved = save_normalization_profile(profile_name, profile_body)
             except Exception as exc:
-                return self._json(400, {"ok": False, "errors": [str(exc)]})
+                return self._json_error(400, str(exc))
             return self._json(200, {"ok": True, "profile": saved})
 
         self.send_error(404)

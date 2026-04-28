@@ -5,6 +5,7 @@ const normalizeTab = document.getElementById("normalizeTab");
 const matchTab = document.getElementById("matchTab");
 
 const workflowSelect = document.getElementById("workflowSelect");
+const quickWorkflowSelect = document.getElementById("quickWorkflowSelect");
 const workflowMeta = document.getElementById("workflowMeta");
 const openMatchHelp = document.getElementById("openMatchHelp");
 const closeMatchHelp = document.getElementById("closeMatchHelp");
@@ -14,6 +15,13 @@ const closeDangerModal = document.getElementById("closeDangerModal");
 const cancelDangerModal = document.getElementById("cancelDangerModal");
 const confirmDangerModal = document.getElementById("confirmDangerModal");
 const dangerModalMessage = document.getElementById("dangerModalMessage");
+const tourModal = document.getElementById("tourModal");
+const closeTourModal = document.getElementById("closeTourModal");
+const tourPrev = document.getElementById("tourPrev");
+const tourNext = document.getElementById("tourNext");
+const tourStepCount = document.getElementById("tourStepCount");
+const tourModalTitle = document.getElementById("tourModalTitle");
+const tourModalBody = document.getElementById("tourModalBody");
 const customStagePanel = document.getElementById("customStagePanel");
 const customStageList = document.getElementById("customStageList");
 const customStageDescription = document.getElementById("customStageDescription");
@@ -30,9 +38,12 @@ const jobSpec = document.getElementById("jobSpec");
 const resultBox = document.getElementById("resultBox");
 
 const primaryFile = document.getElementById("primaryFile");
+const primaryManagedSelect = document.getElementById("primaryManagedSelect");
 const primaryFileStatus = document.getElementById("primaryFileStatus");
 const referenceFile = document.getElementById("referenceFile");
+const referenceManagedSelect = document.getElementById("referenceManagedSelect");
 const referenceFileStatus = document.getElementById("referenceFileStatus");
+const runLabel = document.getElementById("runLabel");
 const outputPath = document.getElementById("outputPath");
 const strictMatchMode = document.getElementById("strictMatchMode");
 const confidentThreshold = document.getElementById("confidentThreshold");
@@ -76,8 +87,10 @@ const workflowSavedConfigs = document.getElementById("workflowSavedConfigs");
 const quickPresetBar = document.getElementById("quickPresetBar");
 const thresholdCard = document.getElementById("thresholdCard");
 const jobSpecPanel = document.getElementById("jobSpecPanel");
+const matchAdvancedRunSettings = document.getElementById("matchAdvancedRunSettings");
 
 const normalizeInputFile = document.getElementById("normalizeInputFile");
+const normalizeManagedSelect = document.getElementById("normalizeManagedSelect");
 const normalizeInputStatus = document.getElementById("normalizeInputStatus");
 const normalizeOutputName = document.getElementById("normalizeOutputName");
 const normalizeStrictCleanup = document.getElementById("normalizeStrictCleanup");
@@ -105,6 +118,31 @@ const customProfileTarget = document.getElementById("customProfileTarget");
 const customProfileRows = document.getElementById("customProfileRows");
 const customProfileErrors = document.getElementById("customProfileErrors");
 const customProfilePreview = document.getElementById("customProfilePreview");
+const primaryPanel = document.getElementById("primaryPanel");
+const primaryPanelTitle = document.getElementById("primaryPanelTitle");
+const referencePanel = document.getElementById("referencePanel");
+const guidedUseDemo = document.getElementById("guidedUseDemo");
+const guidedInspectAll = document.getElementById("guidedInspectAll");
+const guidedValidateJob = document.getElementById("guidedValidateJob");
+const guidedRunJob = document.getElementById("guidedRunJob");
+const guidedRunJobInline = document.getElementById("guidedRunJobInline");
+const simpleModeButton = document.getElementById("simpleModeButton");
+const fullModeButton = document.getElementById("fullModeButton");
+const interfaceModeNote = document.getElementById("interfaceModeNote");
+const startGuidedTour = document.getElementById("startGuidedTour");
+const guidedWorkflowStatus = document.getElementById("guidedWorkflowStatus");
+const guidedFileStatus = document.getElementById("guidedFileStatus");
+const guidedFileSummary = document.getElementById("guidedFileSummary");
+const guidedMappingStatus = document.getElementById("guidedMappingStatus");
+const guidedMappingSummary = document.getElementById("guidedMappingSummary");
+const guidedRunStatus = document.getElementById("guidedRunStatus");
+const guidedRunNarrative = document.getElementById("guidedRunNarrative");
+const guidedRunOutputs = document.getElementById("guidedRunOutputs");
+const guidedRunBlockers = document.getElementById("guidedRunBlockers");
+const shortcutMatchRecords = document.getElementById("shortcutMatchRecords");
+const shortcutFindMissing = document.getElementById("shortcutFindMissing");
+const shortcutSplitRows = document.getElementById("shortcutSplitRows");
+const shortcutExtractProjection = document.getElementById("shortcutExtractProjection");
 
 let workflows = [];
 let availableStages = [];
@@ -124,12 +162,21 @@ let normalizeUploadedPath = "";
 let demoDefaults = null;
 const DEFAULT_OUTPUT_ROOT = "output/webapp_runs";
 const ACTIVE_TAB_STORAGE_KEY = "pipeline.activeTab";
+const INTERFACE_MODE_STORAGE_KEY = "pipeline.interfaceMode";
 let activeWorkflowSection = "match";
 let inventoryState = { inputs: [], normalized: [], outputs: [] };
 let pendingDangerAction = null;
 let normalizeProgressTimer = null;
 let matchProgressTimer = null;
 let activeMatchJobId = "";
+let latestValidationResult = null;
+let guidedValidationTimer = null;
+let validationRequestToken = 0;
+let activeTourIndex = -1;
+let highlightedTourElement = null;
+let interfaceMode = "simple";
+let activeStageDrag = null;
+const STAGE_DRAG_BLOCK_SELECTOR = "button, input, select, textarea, label, a";
 const NORMALIZE_CANONICAL_FIELDS = [
   "person_id",
   "first_name",
@@ -185,6 +232,62 @@ const GROUP_CANONICAL_TARGETS = {
   money: ["amount"],
   other: []
 };
+const TOUR_STEPS = [
+  {
+    title: "Welcome",
+    body: "This short tour walks through the normal operator flow: choose a task, select files, confirm mappings, then run. The app will switch tabs for you when needed.",
+    tab: "match",
+    target: ".guided-panel"
+  },
+  {
+    title: "Choose The Task",
+    body: "Start here. Pick a workflow that matches what you are trying to do, or use the shortcut buttons for common jobs like matching records or splitting rows.",
+    tab: "match",
+    workflow: "match_records_to_reference",
+    target: "#workflowSelect"
+  },
+  {
+    title: "Select Your Files",
+    body: "Choose staged project files from the dropdowns or upload fresh CSVs. The app will inspect the file and suggest mappings automatically.",
+    tab: "match",
+    workflow: "match_records_to_reference",
+    target: "#primaryPanel"
+  },
+  {
+    title: "Review The Reference File",
+    body: "For matching workflows, the reference file is the trusted comparison dataset. Use it to decide whether a person already exists, needs review, or looks new.",
+    tab: "match",
+    workflow: "match_records_to_reference",
+    target: "#referencePanel"
+  },
+  {
+    title: "Output Folder And Match Posture",
+    body: "Give the run a simple label, let the app build the managed output path, and only adjust the match posture when you actually need stricter or looser matching.",
+    tab: "match",
+    workflow: "match_records_to_reference",
+    target: "#matchRunControlsPanel"
+  },
+  {
+    title: "Run And Review",
+    body: "Use the Quick Start summary or Run button to launch the job. After the run finishes, this area shows counts, output files, and why records landed in each match bucket.",
+    tab: "match",
+    workflow: "match_records_to_reference",
+    target: "#summaryCards"
+  },
+  {
+    title: "Prep Tab",
+    body: "If files are messy before matching, use Prep first. It can normalize fields, split apartment-style addresses, and save a cleaned file back into the project library.",
+    tab: "normalize",
+    target: "#normalizeTab .panel"
+  },
+  {
+    title: "Utilities",
+    body: "Utilities are for one-off jobs like splitting rows, extracting a projection, or enrichment. They use the same file selection and guided summary pattern without requiring a match flow.",
+    tab: "utilities",
+    workflow: "split_alternating_rows",
+    target: "#workflowSelect"
+  }
+];
 
 function mappingSlots(value) {
   const values = Array.isArray(value) ? value : value ? [value] : [];
@@ -228,12 +331,59 @@ function isBuilderWorkflow(workflow) {
 
 function defaultOutputDirectory() {
   const workflow = workflowSelect?.value || "run";
-  return `${DEFAULT_OUTPUT_ROOT}/${workflow}`;
+  return `${DEFAULT_OUTPUT_ROOT}/${workflow}/${defaultRunLabel()}`;
 }
 
 function defaultNormalizedOutputName(sourcePath) {
   const filename = (sourcePath || "normalized").split("/").pop().replace(/\.csv$/i, "");
   return `${filename}_normalized.csv`;
+}
+
+function slugifyLabel(value, fallback = "run") {
+  const slug = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || fallback;
+}
+
+function defaultRunLabel() {
+  return "latest-run";
+}
+
+function deriveRunLabelFromPath(path) {
+  const cleaned = String(path || "").replace(/\/+$/, "");
+  const segments = cleaned.split("/").filter(Boolean);
+  let segment = segments.pop() || "";
+  if (/\.(csv|json)$/i.test(segment) && segments.length) {
+    segment = segments.pop() || segment;
+  }
+  return segment || defaultRunLabel();
+}
+
+function builderInputsForCurrentWorkflow() {
+  return workflowInputsForBuilder();
+}
+
+function usesReferenceFile() {
+  return builderInputsForCurrentWorkflow().includes("reference");
+}
+
+function usesSingleSourceFile() {
+  return builderInputsForCurrentWorkflow().includes("source");
+}
+
+function currentPrimaryLabel() {
+  return usesSingleSourceFile() && !usesReferenceFile() ? "Source file" : "Primary file";
+}
+
+function syncManagedOutputPath() {
+  if (!runLabel.value.trim()) {
+    runLabel.value = defaultRunLabel();
+  }
+  const workflow = workflowSelect?.value || "run";
+  outputPath.value = `${DEFAULT_OUTPUT_ROOT}/${workflow}/${slugifyLabel(runLabel.value, defaultRunLabel())}`;
 }
 
 function currentMatchPreset() {
@@ -375,6 +525,68 @@ function setDangerModalOpen(isOpen) {
   }
 }
 
+function clearTourHighlight() {
+  if (highlightedTourElement) {
+    highlightedTourElement.classList.remove("tour-highlight");
+    highlightedTourElement = null;
+  }
+}
+
+function setTourModalOpen(isOpen) {
+  tourModal.classList.toggle("hidden", !isOpen);
+  if (!isOpen) {
+    clearTourHighlight();
+    activeTourIndex = -1;
+  }
+}
+
+async function showTourStep(index) {
+  const step = TOUR_STEPS[index];
+  if (!step) return;
+
+  activeTourIndex = index;
+  clearTourHighlight();
+
+  if (step.tab) {
+    setTab(step.tab);
+  }
+  if (step.workflow && workflowSelect.value !== step.workflow) {
+    workflowSelect.value = step.workflow;
+    await showWorkflow();
+  }
+
+  tourStepCount.textContent = `Step ${index + 1} of ${TOUR_STEPS.length}`;
+  tourModalTitle.textContent = step.title;
+  tourModalBody.textContent = step.body;
+  tourPrev.disabled = index === 0;
+  tourNext.textContent = index === TOUR_STEPS.length - 1 ? "Finish" : "Next";
+
+  if (step.target) {
+    const target = document.querySelector(step.target);
+    if (target instanceof HTMLElement) {
+      highlightedTourElement = target;
+      highlightedTourElement.classList.add("tour-highlight");
+      highlightedTourElement.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+}
+
+async function startTour() {
+  setTourModalOpen(true);
+  await showTourStep(0);
+}
+
+async function moveTour(direction) {
+  if (activeTourIndex < 0) return;
+  const nextIndex = activeTourIndex + direction;
+  if (nextIndex < 0) return;
+  if (nextIndex >= TOUR_STEPS.length) {
+    setTourModalOpen(false);
+    return;
+  }
+  await showTourStep(nextIndex);
+}
+
 function confirmDangerousAction(message, action) {
   dangerModalMessage.textContent = message;
   pendingDangerAction = action;
@@ -401,6 +613,9 @@ function setTab(active) {
   const normalizeActive = active === "normalize";
   const matchActive = active === "match";
   const utilitiesActive = active === "utilities";
+  document.body.classList.toggle("tab-normalize-active", normalizeActive);
+  document.body.classList.toggle("tab-match-active", matchActive);
+  document.body.classList.toggle("tab-utilities-active", utilitiesActive);
   tabNormalize.classList.toggle("active", normalizeActive);
   normalizeTab.classList.toggle("active", normalizeActive);
   tabMatch.classList.toggle("active", matchActive);
@@ -432,20 +647,97 @@ function workflowsForActiveSection() {
   });
 }
 
-function renderWorkflowOptions(preferredWorkflow = "") {
-  const available = workflowsForActiveSection();
-  workflowSelect.innerHTML = "";
+function isAdvancedWorkflow(workflow) {
+  return workflow === "custom_job";
+}
+
+function canUseSimpleModeForWorkflow(workflow) {
+  return !isAdvancedWorkflow(workflow);
+}
+
+function renderWorkflowSelect(selectEl, available, preferredWorkflow = "", emptyLabel = "") {
+  if (!selectEl) return "";
+  selectEl.innerHTML = "";
   available.forEach((workflow) => {
     const option = document.createElement("option");
     option.value = workflow.workflow;
     option.textContent = `${workflow.workflow} — ${workflow.label}`;
-    workflowSelect.appendChild(option);
+    selectEl.appendChild(option);
   });
   const preferredAllowed = available.some((workflow) => workflow.workflow === preferredWorkflow);
   if (preferredAllowed) {
-    workflowSelect.value = preferredWorkflow;
+    selectEl.value = preferredWorkflow;
   } else if (available.length) {
-    workflowSelect.value = available[0].workflow;
+    selectEl.value = available[0].workflow;
+  } else if (emptyLabel) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = emptyLabel;
+    selectEl.appendChild(option);
+    selectEl.value = "";
+  }
+  return selectEl.value || "";
+}
+
+function updateInterfaceModeNote(message = "") {
+  if (!interfaceModeNote) return;
+  if (message) {
+    interfaceModeNote.textContent = message;
+    return;
+  }
+  interfaceModeNote.textContent = interfaceMode === "simple"
+    ? "Quick mode shows only the main path. Full mode restores presets, previews, and builder tools."
+    : "Full mode shows the wider operator workspace, including presets, previews, inventory, and custom workflow tools.";
+}
+
+function setInterfaceMode(mode, { persist = true, message = "" } = {}) {
+  let nextMode = mode === "full" ? "full" : "simple";
+  let nextMessage = message;
+  if (nextMode === "simple" && !canUseSimpleModeForWorkflow(workflowSelect?.value || "")) {
+    nextMode = "full";
+    nextMessage = "Custom workflow building stays in full mode because quick mode hides the builder and raw operator panels.";
+  }
+  interfaceMode = nextMode;
+  const simpleMode = nextMode === "simple";
+  document.body.classList.toggle("simple-mode", simpleMode);
+  document.body.classList.toggle("full-mode", !simpleMode);
+  simpleModeButton?.classList.toggle("active-mode", simpleMode);
+  fullModeButton?.classList.toggle("active-mode", !simpleMode);
+  simpleModeButton?.setAttribute("aria-pressed", simpleMode ? "true" : "false");
+  fullModeButton?.setAttribute("aria-pressed", simpleMode ? "false" : "true");
+  workflowSavedConfigs.open = !simpleMode && workflowSavedConfigs.open;
+  workflowMetaPanel.open = !simpleMode && workflowMetaPanel.open;
+  jobSpecPanel.open = !simpleMode && jobSpecPanel.open;
+  matchAdvancedRunSettings?.toggleAttribute("open", !simpleMode && matchAdvancedRunSettings.open);
+  updateInterfaceModeNote(nextMessage);
+  if (persist) {
+    try {
+      localStorage.setItem(INTERFACE_MODE_STORAGE_KEY, interfaceMode);
+    } catch {
+      // Ignore storage failures and keep the UI usable.
+    }
+  }
+}
+
+function renderWorkflowOptions(preferredWorkflow = "") {
+  const available = workflowsForActiveSection();
+  const selectedWorkflow = renderWorkflowSelect(workflowSelect, available, preferredWorkflow, "No workflows available");
+  const quickAvailable = available.filter((workflow) => !isAdvancedWorkflow(workflow.workflow));
+  renderWorkflowSelect(quickWorkflowSelect, quickAvailable, selectedWorkflow, "No quick workflows available");
+  if (quickWorkflowSelect && selectedWorkflow && quickWorkflowSelect.value !== selectedWorkflow) {
+    const selectedMeta = available.find((workflow) => workflow.workflow === selectedWorkflow);
+    if (selectedMeta) {
+      const advancedOption = document.createElement("option");
+      advancedOption.value = selectedMeta.workflow;
+      advancedOption.textContent = `${selectedMeta.workflow} — ${selectedMeta.label} (full mode only)`;
+      quickWorkflowSelect.appendChild(advancedOption);
+      quickWorkflowSelect.value = selectedMeta.workflow;
+    }
+  }
+  if (interfaceMode === "simple" && selectedWorkflow && !canUseSimpleModeForWorkflow(selectedWorkflow)) {
+    setInterfaceMode("full", { message: "Custom workflow building stays in full mode because quick mode hides the builder and raw operator panels." });
+  } else {
+    updateInterfaceModeNote();
   }
 }
 
@@ -481,7 +773,8 @@ function clearInlineErrors() {
     normalizePathErrors,
     normalizeMappingErrors,
     normalizeOutputErrors,
-    customProfileErrors
+    customProfileErrors,
+    guidedRunBlockers
   ].forEach((container) => {
     container.innerHTML = "";
   });
@@ -525,37 +818,44 @@ async function loadNormalizationProfiles() {
   refreshNormalizationMeta();
 }
 
-function setSelectedPath(kind, path) {
+async function setSelectedPath(kind, path) {
   if (kind === "normalize") {
     normalizeUploadedPath = path;
-    normalizeInputStatus.textContent = path;
+    normalizeManagedSelect.value = path;
+    normalizeInputStatus.textContent = `${fileNameFromPath(path)} selected from project files.`;
     normalizeState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
     normalizeHeaders.textContent = "";
     renderNormalizeMappingForm();
-    if (!normalizeOutputName.value.trim()) {
-      normalizeOutputName.value = defaultNormalizedOutputName(path);
-    }
-    hydrateNormalizeSelection().catch((error) => {
+    normalizeOutputName.value = defaultNormalizedOutputName(path);
+    await hydrateNormalizeSelection().catch((error) => {
       normalizeResultBox.textContent = String(error.message || error);
     });
     return;
   }
   if (kind === "primary") {
     primaryUploadedPath = path;
-    primaryFileStatus.textContent = path;
-    syncPreview();
+    primaryManagedSelect.value = path;
+    primaryFileStatus.textContent = `${fileNameFromPath(path)} selected from project files.`;
+    primaryState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
+    await inspectInput("primary");
+    applySuggestions("primary");
     return;
   }
   if (kind === "reference") {
     referenceUploadedPath = path;
-    referenceFileStatus.textContent = path;
-    syncPreview();
+    referenceManagedSelect.value = path;
+    referenceFileStatus.textContent = `${fileNameFromPath(path)} selected from project files.`;
+    referenceState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
+    await inspectInput("reference");
+    applySuggestions("reference");
+    return;
   }
 }
 
 function clearSelectedPathIfDeleted(path) {
   if (normalizeUploadedPath === path) {
     normalizeUploadedPath = "";
+    normalizeManagedSelect.value = "";
     normalizeInputStatus.textContent = "No file selected.";
     normalizeHeaders.textContent = "";
     normalizeState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
@@ -563,15 +863,19 @@ function clearSelectedPathIfDeleted(path) {
   }
   if (primaryUploadedPath === path) {
     primaryUploadedPath = "";
+    primaryManagedSelect.value = "";
     primaryFileStatus.textContent = "No file selected.";
     primaryHeaders.textContent = "";
     primaryHeaderGroups.innerHTML = "";
+    primaryState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
   }
   if (referenceUploadedPath === path) {
     referenceUploadedPath = "";
+    referenceManagedSelect.value = "";
     referenceFileStatus.textContent = "No file selected.";
     referenceHeaders.textContent = "";
     referenceHeaderGroups.innerHTML = "";
+    referenceState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
   }
   syncPreview();
 }
@@ -667,11 +971,211 @@ function renderInventory() {
     inventoryState.outputs.filter((file) => file.name !== "run_summary.json"),
     []
   );
+  renderManagedSelectors();
 }
 
 async function loadInventory() {
   inventoryState = await fetchJson("/api/file-inventory");
   renderInventory();
+}
+
+function renderManagedSelectors() {
+  const demoOptions = Array.from(allDemoPaths()).map((path) => ({
+    value: path,
+    label: `${fileNameFromPath(path)} — demo data`
+  }));
+  const prepOptions = [...demoOptions, ...[...inventoryState.inputs, ...inventoryState.normalized].map((file) => ({
+    value: file.path,
+    label: `${file.name} — ${file.relative_path}`
+  }))];
+  const matchOptions = [...demoOptions, ...[...inventoryState.normalized, ...inventoryState.inputs].map((file) => ({
+    value: file.path,
+    label: `${file.name} — ${file.relative_path}`
+  }))];
+  setSelectOptions(normalizeManagedSelect, prepOptions, "Choose a staged file");
+  setSelectOptions(primaryManagedSelect, matchOptions, "Choose a staged file");
+  setSelectOptions(referenceManagedSelect, matchOptions, "Choose a staged file");
+  normalizeManagedSelect.value = normalizeUploadedPath || "";
+  primaryManagedSelect.value = primaryUploadedPath || "";
+  referenceManagedSelect.value = referenceUploadedPath || "";
+}
+
+function updateInputPanelsForWorkflow() {
+  const usingReference = usesReferenceFile();
+  const sourceOnly = usesSingleSourceFile() && !usingReference;
+  referencePanel.classList.toggle("hidden", !usingReference);
+  primaryPanelTitle.textContent = sourceOnly ? "Source File" : "Primary File";
+  quickPresetBar.classList.toggle("hidden", sourceOnly);
+  thresholdCard.classList.toggle("hidden", sourceOnly);
+  matchContract.classList.toggle("hidden", sourceOnly);
+}
+
+function mappingCount(mapping) {
+  return Object.keys(mapping || {}).filter((key) => {
+    const value = mapping[key];
+    return Array.isArray(value) ? value.some(Boolean) : Boolean(value);
+  }).length;
+}
+
+function fileNameFromPath(path) {
+  return String(path || "").split("/").filter(Boolean).pop() || "";
+}
+
+function setGuidedStatus(element, text, state) {
+  element.textContent = text;
+  element.dataset.state = state;
+}
+
+function renderGuidedList(container, rows) {
+  container.innerHTML = "";
+  if (!rows.length) {
+    container.innerHTML = '<div class="guided-detail-row"><span>Nothing selected yet.</span></div>';
+    return;
+  }
+  rows.forEach((row) => {
+    const item = document.createElement("div");
+    item.className = "guided-detail-row";
+    item.innerHTML = `<span>${row.label}</span><strong>${row.value}</strong>`;
+    container.appendChild(item);
+  });
+}
+
+function plannedOutputNames(workflow) {
+  if (workflow === "split_alternating_rows") return ["split_a.csv", "split_b.csv", "run_summary.json"];
+  if (workflow === "extract_projection") return ["projection.csv", "run_summary.json"];
+  if (workflow === "enrich_records_from_reference") return ["enriched_records.csv", "run_summary.json"];
+  if (workflow === "process_full_records") return ["processed_records.csv", "run_summary.json"];
+  if (workflow === "compare_records_to_reference") return ["new_records.csv", "review_records.csv", "matched_records.csv", "run_summary.json"];
+  if (workflow === "identify_missing_records_from_system") return ["likely_missing_records.csv", "needs_review_records.csv", "likely_existing_records.csv", "run_summary.json"];
+  if (workflow === "custom_job") return ["custom workflow output files", "run_summary.json"];
+  return ["matched_records.csv", "review_records.csv", "unmatched_records.csv", "run_summary.json"];
+}
+
+function applyWorkflowShortcut(workflow) {
+  if (!workflow) return;
+  const targetTab = workflows.find((item) => item.workflow === workflow)?.category === "utilities" ? "utilities" : "match";
+  setTab(targetTab);
+  workflowSelect.value = workflow;
+  void showWorkflow();
+}
+
+function renderGuidedSummary(errors = []) {
+  const workflow = workflowSelect.value;
+  const workflowLabel = currentWorkflowMeta?.label || workflow || "workflow";
+  const usingReference = usesReferenceFile();
+  const sourceOnly = usesSingleSourceFile() && !usingReference;
+  const primaryLabel = sourceOnly ? "Source file" : "Primary file";
+  const primaryMapped = mappingCount(primaryState.mapping);
+  const referenceMapped = mappingCount(referenceState.mapping);
+  const fileRows = [
+    { label: primaryLabel, value: primaryUploadedPath ? fileNameFromPath(primaryUploadedPath) : "Not selected" }
+  ];
+  if (usingReference) {
+    fileRows.push({ label: "Reference file", value: referenceUploadedPath ? fileNameFromPath(referenceUploadedPath) : "Not selected" });
+  }
+  renderGuidedList(guidedFileSummary, fileRows);
+
+  const mappingRows = [
+    { label: `${primaryLabel} mapped fields`, value: `${primaryMapped}` }
+  ];
+  if (usingReference) {
+    mappingRows.push({ label: "Reference mapped fields", value: `${referenceMapped}` });
+  }
+  if (!usingReference) {
+    mappingRows.push({ label: "Matcher thresholds", value: "Not used for this workflow" });
+  } else {
+    mappingRows.push({ label: "Match preset", value: currentMatchPreset() || "Custom" });
+  }
+  renderGuidedList(guidedMappingSummary, mappingRows);
+
+  const workflowReady = Boolean(workflow);
+  const filesReady = sourceOnly
+    ? Boolean(primaryUploadedPath)
+    : Boolean(primaryUploadedPath) && (!usingReference || Boolean(referenceUploadedPath));
+  const mappingReady = sourceOnly
+    ? primaryMapped > 0
+    : primaryMapped > 0 && (!usingReference || referenceMapped > 0);
+  const errorList = errors || [];
+
+  setGuidedStatus(guidedWorkflowStatus, workflowReady ? `${workflowLabel} selected.` : "Pick a workflow for this run.", workflowReady ? "ready" : "pending");
+  setGuidedStatus(
+    guidedFileStatus,
+    filesReady ? "Required files are selected." : `Select the ${usingReference ? "primary and reference files" : "source file"}.`,
+    filesReady ? "ready" : "pending"
+  );
+  setGuidedStatus(
+    guidedMappingStatus,
+    mappingReady ? "Suggested mappings are in place. You can still edit them below." : "Inspect the selected file(s) so the app can suggest mappings.",
+    mappingReady ? "ready" : "pending"
+  );
+
+  guidedRunBlockers.innerHTML = "";
+  errorList.forEach((error) => appendInlineError(guidedRunBlockers, error));
+  const outputNames = plannedOutputNames(workflowSelect.value);
+  renderGuidedList(
+    guidedRunOutputs,
+    outputNames.map((name, index) => ({
+      label: index === 0 ? "Planned outputs" : " ",
+      value: name
+    }))
+  );
+
+  if (errorList.length) {
+    setGuidedStatus(guidedRunStatus, "Not ready yet. Fix the blockers shown below.", "error");
+  } else if (workflowReady && filesReady && mappingReady) {
+    setGuidedStatus(guidedRunStatus, "Ready to run.", "ready");
+  } else {
+    setGuidedStatus(guidedRunStatus, "A few setup steps are still missing.", "pending");
+  }
+
+  const fileNarrative = usingReference
+    ? `${primaryUploadedPath ? fileNameFromPath(primaryUploadedPath) : "your primary file"} will be compared against ${referenceUploadedPath ? fileNameFromPath(referenceUploadedPath) : "your reference file"}.`
+    : `${primaryUploadedPath ? fileNameFromPath(primaryUploadedPath) : "Your selected source file"} will run through ${workflowLabel}.`;
+  const thresholdNarrative = usingReference
+    ? ` Matching posture is ${currentMatchPreset() || "custom"}, with confident ${confidentThreshold.value || "160"}, possible ${possibleThreshold.value || "120"}, and review ${reviewThreshold.value || "85"}.`
+    : "";
+  guidedRunNarrative.textContent = `${fileNarrative} Output will be written to ${outputPath.value || defaultOutputDirectory()}.${thresholdNarrative}`;
+}
+
+async function refreshGuidedValidation() {
+  if (!workflowSelect.value || !currentWorkflowMeta) {
+    latestValidationResult = { errors: [] };
+    renderGuidedSummary([]);
+    return;
+  }
+  const token = ++validationRequestToken;
+  try {
+    const payload = buildJobSpecObject();
+    const result = await fetchJson("/api/validate-job", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (token !== validationRequestToken) return;
+    latestValidationResult = result;
+    renderValidationErrors(result.errors || []);
+    renderGuidedSummary(result.errors || []);
+  } catch (error) {
+    if (token !== validationRequestToken) return;
+    const message = String(error.message || error);
+    try {
+      const parsed = JSON.parse(message);
+      latestValidationResult = { errors: parsed.errors || [message] };
+      renderValidationErrors(parsed.errors || [message]);
+      renderGuidedSummary(parsed.errors || [message]);
+    } catch {
+      latestValidationResult = { errors: [message] };
+      renderValidationErrors([message]);
+      renderGuidedSummary([message]);
+    }
+  }
+}
+
+function scheduleGuidedValidation() {
+  clearTimeout(guidedValidationTimer);
+  guidedValidationTimer = setTimeout(() => {
+    void refreshGuidedValidation();
+  }, 220);
 }
 
 async function loadPresets() {
@@ -692,9 +1196,10 @@ async function loadPresets() {
 async function loadWorkflows() {
   workflows = await fetchJson("/api/workflows");
   renderWorkflowOptions(workflowSelect.value);
-  if (!outputPath.value.trim()) {
-    outputPath.value = defaultOutputDirectory();
+  if (!runLabel.value.trim()) {
+    runLabel.value = defaultRunLabel();
   }
+  syncManagedOutputPath();
   await showWorkflow();
 }
 
@@ -930,6 +1435,51 @@ function drawCustomStageConnectors() {
   }
 }
 
+function beginStageDrag(event, stage, step) {
+  if (event.button !== 0) return;
+  const target = event.target;
+  if (target instanceof HTMLElement && target.closest(STAGE_DRAG_BLOCK_SELECTOR)) {
+    return;
+  }
+  event.preventDefault();
+  draggedStageId = stage.id;
+  activeStageDrag = {
+    pointerId: event.pointerId,
+    stageId: stage.id,
+    step,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    originX: stage.x || 0,
+    originY: stage.y || 0
+  };
+  step.classList.add("dragging");
+  step.setPointerCapture?.(event.pointerId);
+}
+
+function updateStageDrag(event) {
+  if (!activeStageDrag || event.pointerId !== activeStageDrag.pointerId) return;
+  const stage = customStagePlan.find((item) => item.id === activeStageDrag.stageId);
+  if (!stage) return;
+  event.preventDefault();
+  const scale = customStageZoomLevel / 100 || 1;
+  stage.x = Math.max(0, Math.round(activeStageDrag.originX + ((event.clientX - activeStageDrag.startClientX) / scale)));
+  stage.y = Math.max(0, Math.round(activeStageDrag.originY + ((event.clientY - activeStageDrag.startClientY) / scale)));
+  activeStageDrag.step.style.left = `${stage.x}px`;
+  activeStageDrag.step.style.top = `${stage.y}px`;
+  drawCustomStageConnectors();
+}
+
+function endStageDrag(event) {
+  if (!activeStageDrag || event.pointerId !== activeStageDrag.pointerId) return;
+  const { step, pointerId } = activeStageDrag;
+  step.classList.remove("dragging");
+  step.releasePointerCapture?.(pointerId);
+  activeStageDrag = null;
+  draggedStageId = "";
+  drawCustomStageConnectors();
+  syncPreview();
+}
+
 function renderStageLibrary() {
   if (!stageLibrary) return;
   stageLibrary.innerHTML = "";
@@ -1096,6 +1646,7 @@ function renderCustomStagePlan() {
     step.style.left = `${stage.x}px`;
     step.style.top = `${stage.y}px`;
     step.dataset.stageId = stage.id;
+    step.addEventListener("pointerdown", (event) => beginStageDrag(event, stage, step));
 
     const card = document.createElement("div");
     card.className = "custom-stage-card";
@@ -1491,7 +2042,10 @@ function buildJobSpecObject() {
 }
 
 function syncPreview() {
+  syncManagedOutputPath();
   jobSpec.value = pretty(buildJobSpecObject());
+  renderGuidedSummary(latestValidationResult?.errors || []);
+  scheduleGuidedValidation();
 }
 
 function renderValidationErrors(errors) {
@@ -1538,7 +2092,15 @@ function applyPresetToForm(preset) {
   referenceUploadedPath = reference.path || "";
   primaryFileStatus.textContent = primaryUploadedPath || "No file selected.";
   referenceFileStatus.textContent = referenceUploadedPath || "No file selected.";
-  outputPath.value = preset.outputs?.records?.base_dir || defaultOutputDirectory();
+  primaryManagedSelect.value = primaryUploadedPath || "";
+  referenceManagedSelect.value = referenceUploadedPath || "";
+  runLabel.value = deriveRunLabelFromPath(
+    preset.outputs?.records?.base_dir ||
+    preset.outputs?.projection?.path ||
+    preset.outputs?.split?.path_a ||
+    defaultOutputDirectory()
+  );
+  syncManagedOutputPath();
   primaryState.mapping = { ...(primary.columns || source.columns || {}) };
   referenceState.mapping = { ...(reference.columns || {}) };
   strictMatchMode.checked = preset.match?.strict_mode ?? false;
@@ -1588,6 +2150,7 @@ async function applyPrepDemoDefaults(force = false) {
   if (!demoDefaults?.prep) return;
   if (!force && normalizeUploadedPath) return;
   normalizeUploadedPath = demoDefaults.prep.input_path;
+  normalizeManagedSelect.value = normalizeUploadedPath;
   setFileStatus(normalizeInputStatus, normalizeUploadedPath, "shipped demo");
   if (!normalizeOutputName.value) {
     normalizeOutputName.value = defaultNormalizedOutputName(normalizeUploadedPath);
@@ -1606,12 +2169,14 @@ async function applyWorkflowDemoDefaults(force = false) {
   if (defaults.source_path) {
     if (force || !primaryUploadedPath || isDemoPath(primaryUploadedPath)) {
       primaryUploadedPath = defaults.source_path;
+      primaryManagedSelect.value = primaryUploadedPath;
       setFileStatus(primaryFileStatus, primaryUploadedPath, "shipped demo");
       primaryState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
       await inspectInput("primary");
       applySuggestions("primary");
     }
     referenceUploadedPath = "";
+    referenceManagedSelect.value = "";
     referenceFileStatus.textContent = "No file selected.";
     referenceState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
     renderMappingForm("reference");
@@ -1621,6 +2186,7 @@ async function applyWorkflowDemoDefaults(force = false) {
 
   if (defaults.primary_path && (force || !primaryUploadedPath || isDemoPath(primaryUploadedPath))) {
     primaryUploadedPath = defaults.primary_path;
+    primaryManagedSelect.value = primaryUploadedPath;
     setFileStatus(primaryFileStatus, primaryUploadedPath, "shipped demo");
     primaryState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
     await inspectInput("primary");
@@ -1628,6 +2194,7 @@ async function applyWorkflowDemoDefaults(force = false) {
   }
   if (defaults.reference_path && (force || !referenceUploadedPath || isDemoPath(referenceUploadedPath))) {
     referenceUploadedPath = defaults.reference_path;
+    referenceManagedSelect.value = referenceUploadedPath;
     setFileStatus(referenceFileStatus, referenceUploadedPath, "shipped demo");
     referenceState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
     await inspectInput("reference");
@@ -1648,6 +2215,9 @@ function renderSummary(summary) {
     unmatchedPreview.innerHTML = "";
   }
   if (!summary) return;
+  if (matchPreviewPanel instanceof HTMLDetailsElement) {
+    matchPreviewPanel.open = true;
+  }
 
   Object.entries(summary.counts || {}).forEach(([key, value]) => {
     const card = document.createElement("div");
@@ -1824,6 +2394,7 @@ function updateCustomProfilePreview() {
 
 async function showWorkflow() {
   const workflow = workflowSelect.value;
+  renderWorkflowOptions(workflow);
   if (!workflow) {
     currentWorkflowMeta = null;
     workflowMeta.textContent = "";
@@ -1832,10 +2403,17 @@ async function showWorkflow() {
     syncPreview();
     return;
   }
-  currentWorkflowMeta = await fetchJson(`/api/workflows/${workflow}`);
-  if (!outputPath.value.trim() || outputPath.value.includes("/absolute/path/to/output")) {
-    outputPath.value = defaultOutputDirectory();
+  if (interfaceMode === "simple" && !canUseSimpleModeForWorkflow(workflow)) {
+    setInterfaceMode("full", { message: "Custom workflow building stays in full mode because quick mode hides the builder and raw operator panels." });
+  } else {
+    updateInterfaceModeNote();
   }
+  currentWorkflowMeta = await fetchJson(`/api/workflows/${workflow}`);
+  if (!runLabel.value.trim()) {
+    runLabel.value = defaultRunLabel();
+  }
+  syncManagedOutputPath();
+  updateInputPanelsForWorkflow();
   workflowMeta.textContent = pretty(currentWorkflowMeta);
   const description = currentWorkflowMeta.description || {};
   const topItems = (items, limit = 3) => (items || []).filter(Boolean).slice(0, limit);
@@ -1962,20 +2540,18 @@ function applyNormalizeSuggestions() {
 }
 
 async function validateJob() {
-  const payload = buildJobSpecObject();
-  const result = await fetchJson("/api/validate-job", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  syncPreview();
-  resultBox.textContent = pretty(result);
-  renderValidationErrors(result.errors || []);
+  await refreshGuidedValidation();
+  resultBox.textContent = pretty(latestValidationResult || {});
   renderSummary(null);
 }
 
 async function runJob() {
   const payload = buildJobSpecObject();
+  await refreshGuidedValidation();
+  if ((latestValidationResult?.errors || []).length) {
+    resultBox.textContent = pretty(latestValidationResult);
+    return;
+  }
   startProgress("match");
   try {
     const started = await fetchJson("/api/run-job-async", {
@@ -2142,7 +2718,31 @@ document.getElementById("inspectReference").addEventListener("click", () => insp
 document.getElementById("applyPrimarySuggestions").addEventListener("click", () => applySuggestions("primary"));
 document.getElementById("applyReferenceSuggestions").addEventListener("click", () => applySuggestions("reference"));
 document.getElementById("validateJob").addEventListener("click", validateJob);
-document.getElementById("runJob").addEventListener("click", runJob);
+guidedValidateJob.addEventListener("click", validateJob);
+guidedRunJob.addEventListener("click", runJob);
+guidedRunJobInline.addEventListener("click", runJob);
+startGuidedTour.addEventListener("click", () => {
+  void startTour();
+});
+guidedUseDemo.addEventListener("click", async () => {
+  await applyWorkflowDemoDefaults(true);
+  syncPreview();
+});
+guidedInspectAll.addEventListener("click", async () => {
+  if (primaryUploadedPath) {
+    await inspectInput("primary");
+    applySuggestions("primary");
+  }
+  if (usesReferenceFile() && referenceUploadedPath) {
+    await inspectInput("reference");
+    applySuggestions("reference");
+  }
+  syncPreview();
+});
+shortcutMatchRecords.addEventListener("click", () => applyWorkflowShortcut("match_records_to_reference"));
+shortcutFindMissing.addEventListener("click", () => applyWorkflowShortcut("identify_missing_records_from_system"));
+shortcutSplitRows.addEventListener("click", () => applyWorkflowShortcut("split_alternating_rows"));
+shortcutExtractProjection.addEventListener("click", () => applyWorkflowShortcut("extract_projection"));
 document.getElementById("loadPreset").addEventListener("click", loadSelectedPreset);
 document.getElementById("savePreset").addEventListener("click", saveCurrentPreset);
 document.getElementById("inspectNormalize").addEventListener("click", inspectNormalizeInput);
@@ -2194,6 +2794,13 @@ matchHelpModal.addEventListener("click", (event) => {
 });
 closeDangerModal.addEventListener("click", () => setDangerModalOpen(false));
 cancelDangerModal.addEventListener("click", () => setDangerModalOpen(false));
+closeTourModal.addEventListener("click", () => setTourModalOpen(false));
+tourPrev.addEventListener("click", () => {
+  void moveTour(-1);
+});
+tourNext.addEventListener("click", () => {
+  void moveTour(1);
+});
 confirmDangerModal.addEventListener("click", async () => {
   if (!pendingDangerAction) {
     setDangerModalOpen(false);
@@ -2213,14 +2820,41 @@ dangerModal.addEventListener("click", (event) => {
     setDangerModalOpen(false);
   }
 });
+tourModal.addEventListener("click", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLElement && target.dataset.closeTourModal === "true") {
+    setTourModalOpen(false);
+  }
+});
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     setMatchHelpOpen(false);
     setDangerModalOpen(false);
+    setTourModalOpen(false);
+  }
+  if (event.key === "ArrowRight" && !tourModal.classList.contains("hidden")) {
+    void moveTour(1);
+  }
+  if (event.key === "ArrowLeft" && !tourModal.classList.contains("hidden")) {
+    void moveTour(-1);
   }
 });
+document.addEventListener("pointermove", updateStageDrag);
+document.addEventListener("pointerup", endStageDrag);
+document.addEventListener("pointercancel", endStageDrag);
 workflowSelect.addEventListener("change", showWorkflow);
-outputPath.addEventListener("change", syncPreview);
+quickWorkflowSelect?.addEventListener("change", () => {
+  if (!quickWorkflowSelect.value) return;
+  workflowSelect.value = quickWorkflowSelect.value;
+  void showWorkflow();
+});
+simpleModeButton?.addEventListener("click", () => {
+  setInterfaceMode("simple");
+});
+fullModeButton?.addEventListener("click", () => {
+  setInterfaceMode("full");
+});
+runLabel.addEventListener("input", syncPreview);
 strictMatchMode.addEventListener("change", () => {
   renderActiveMatchPreset();
   syncPreview();
@@ -2241,43 +2875,66 @@ presetConservative.addEventListener("click", () => applyMatchPreset("conservativ
 presetBalanced.addEventListener("click", () => applyMatchPreset("balanced"));
 presetAggressive.addEventListener("click", () => applyMatchPreset("aggressive"));
 normalizeProfileSelect.addEventListener("change", refreshNormalizationMeta);
+normalizeManagedSelect.addEventListener("change", () => {
+  if (normalizeManagedSelect.value) {
+    void setSelectedPath("normalize", normalizeManagedSelect.value);
+  }
+});
 normalizeInputFile.addEventListener("change", async () => {
   const file = normalizeInputFile.files?.[0];
   if (!file) {
     normalizeUploadedPath = "";
+    normalizeManagedSelect.value = "";
     normalizeInputStatus.textContent = "No file selected.";
     return;
   }
   normalizeUploadedPath = await uploadSelectedFile(file, normalizeInputStatus);
-  if (!normalizeOutputName.value) {
-    normalizeOutputName.value = defaultNormalizedOutputName(normalizeUploadedPath);
-  }
+  normalizeManagedSelect.value = normalizeUploadedPath;
+  normalizeOutputName.value = defaultNormalizedOutputName(normalizeUploadedPath);
   normalizeState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
   normalizeHeaders.textContent = "";
   renderNormalizeMappingForm();
   await hydrateNormalizeSelection();
 });
+primaryManagedSelect.addEventListener("change", () => {
+  if (primaryManagedSelect.value) {
+    void setSelectedPath("primary", primaryManagedSelect.value);
+  }
+});
 primaryFile.addEventListener("change", async () => {
   const file = primaryFile.files?.[0];
   if (!file) {
     primaryUploadedPath = "";
+    primaryManagedSelect.value = "";
     primaryFileStatus.textContent = "No file selected.";
     syncPreview();
     return;
   }
   primaryUploadedPath = await uploadSelectedFile(file, primaryFileStatus);
-  syncPreview();
+  primaryManagedSelect.value = primaryUploadedPath;
+  primaryState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
+  await inspectInput("primary");
+  applySuggestions("primary");
+});
+referenceManagedSelect.addEventListener("change", () => {
+  if (referenceManagedSelect.value) {
+    void setSelectedPath("reference", referenceManagedSelect.value);
+  }
 });
 referenceFile.addEventListener("change", async () => {
   const file = referenceFile.files?.[0];
   if (!file) {
     referenceUploadedPath = "";
+    referenceManagedSelect.value = "";
     referenceFileStatus.textContent = "No file selected.";
     syncPreview();
     return;
   }
   referenceUploadedPath = await uploadSelectedFile(file, referenceFileStatus);
-  syncPreview();
+  referenceManagedSelect.value = referenceUploadedPath;
+  referenceState = { headers: [], suggestions: {}, mapping: {}, groups: {} };
+  await inspectInput("reference");
+  applySuggestions("reference");
 });
 
 addCustomProfileRule();
@@ -2289,6 +2946,17 @@ try {
   }
 } catch {
   // Ignore storage failures and fall back to the default markup state.
+}
+
+try {
+  const savedMode = localStorage.getItem(INTERFACE_MODE_STORAGE_KEY);
+  if (savedMode === "full" || savedMode === "simple") {
+    setInterfaceMode(savedMode, { persist: false });
+  } else {
+    setInterfaceMode("simple", { persist: false });
+  }
+} catch {
+  setInterfaceMode("simple", { persist: false });
 }
 
 Promise.all([loadNormalizationProfiles(), loadPresets(), loadStages(), loadDemoDefaults(), loadWorkflows()])

@@ -10,8 +10,8 @@
     <main class="shell">
       <section class="hero">
         <p class="eyebrow">Record Workbench</p>
-        <h1>Prep first. Match or run utilities next.</h1>
-        <p class="lede">Use Prep for one-file cleanup, Match for reconciliation flows, and Utilities for one-off operational jobs like split, projection, and enrichment.</p>
+        <h1>Pipeline Workbench</h1>
+        <p class="lede">Prepare files, run matching workflows, and export results.</p>
       </section>
 
       <section class="tabbar panel">
@@ -40,6 +40,8 @@
           <div class="grid">
             <div>
               <label class="field-label" for="normalizeInputFile">Source CSV</label>
+              <label class="field-label" for="normalizeManagedSelect">Choose From Project Files</label>
+              <select id="normalizeManagedSelect"></select>
               <input id="normalizeInputFile" type="file" accept=".csv,text/csv">
               <div id="normalizeInputStatus" class="file-status">No file selected.</div>
               <div id="normalizePathErrors" class="inline-errors"></div>
@@ -152,7 +154,60 @@
       </section>
 
       <section id="matchTab" class="tab-panel">
-        <section class="panel">
+        <section class="panel guided-panel">
+          <div class="panel-head">
+            <h2>Quick Start</h2>
+            <div class="actions">
+              <div class="mode-toggle" role="group" aria-label="Interface mode">
+                <button id="simpleModeButton" class="ghost small" type="button">Quick Mode</button>
+                <button id="fullModeButton" class="ghost small" type="button">Full Mode</button>
+              </div>
+              <button id="startGuidedTour" class="ghost small" type="button">Start Tour</button>
+              <button id="guidedUseDemo" class="ghost small" type="button">Reload Demo Files</button>
+              <button id="guidedInspectAll" class="ghost small" type="button">Inspect Selected Files</button>
+              <button id="guidedValidateJob" class="ghost small" type="button">Check Setup</button>
+              <button id="guidedRunJob" type="button">Run Now</button>
+            </div>
+          </div>
+          <p class="section-lede">Pick a workflow, choose files, review mappings, and run.</p>
+          <div id="interfaceModeNote" class="mode-note">Quick mode shows only the main path. Full mode restores presets, previews, and builder tools.</div>
+          <div class="guided-grid">
+            <section class="guided-card">
+              <span class="guided-step">Step 1</span>
+              <h3>Choose Task</h3>
+              <div id="guidedWorkflowStatus" class="guided-status">Pick a workflow for this run.</div>
+              <label class="field-label" for="quickWorkflowSelect">Workflow</label>
+              <select id="quickWorkflowSelect"></select>
+              <div id="guidedWorkflowShortcutBar" class="shortcut-bar">
+                <button id="shortcutMatchRecords" class="ghost small" type="button">Match Records</button>
+                <button id="shortcutFindMissing" class="ghost small" type="button">Find Missing</button>
+                <button id="shortcutSplitRows" class="ghost small" type="button">Split Rows</button>
+                <button id="shortcutExtractProjection" class="ghost small" type="button">Extract Projection</button>
+              </div>
+            </section>
+            <section class="guided-card">
+              <span class="guided-step">Step 2</span>
+              <h3>Select Files</h3>
+              <div id="guidedFileStatus" class="guided-status">Use the project library or upload files below.</div>
+              <div id="guidedFileSummary" class="guided-detail-list"></div>
+            </section>
+            <section class="guided-card">
+              <span class="guided-step">Step 3</span>
+              <h3>Review Mappings</h3>
+              <div id="guidedMappingStatus" class="guided-status">Suggested mappings will appear after inspection.</div>
+              <div id="guidedMappingSummary" class="guided-detail-list"></div>
+            </section>
+            <section class="guided-card guided-card-wide">
+              <span class="guided-step">Step 4</span>
+              <h3>Ready To Run</h3>
+              <div id="guidedRunStatus" class="guided-status">Waiting for workflow details.</div>
+              <div id="guidedRunNarrative" class="guided-narrative"></div>
+              <div id="guidedRunOutputs" class="guided-detail-list"></div>
+              <div id="guidedRunBlockers" class="inline-errors"></div>
+            </section>
+          </div>
+        </section>
+        <section id="workflowPanel" class="panel secondary-panel quick-secondary">
           <div class="panel-head">
             <h2>Workflow</h2>
             <div class="actions">
@@ -163,11 +218,14 @@
           </div>
           <select id="workflowSelect"></select>
           <div id="workflowErrors" class="inline-errors"></div>
-          <div class="demo-note">Shipped demo files are preloaded for the selected workflow so you can run the app immediately.</div>
-          <div id="workflowDescription" class="workflow-detail-box"></div>
-          <div id="matchContract" class="contract-box"></div>
-          <details id="workflowSavedConfigs" class="more-settings">
-            <summary>Saved Configurations</summary>
+          <div class="panel-note">Demo files load automatically for the selected workflow, so you can test the flow immediately.</div>
+          <details class="more-settings">
+            <summary>Workflow Details</summary>
+            <div id="workflowDescription" class="workflow-detail-box"></div>
+            <div id="matchContract" class="contract-box"></div>
+          </details>
+          <details id="workflowSavedConfigs" class="more-settings subtle-details">
+            <summary>Saved Setups</summary>
             <div class="preset-bar">
               <select id="presetSelect"></select>
               <input id="presetName" type="text" placeholder="name for saved configuration">
@@ -176,13 +234,13 @@
             </div>
             <div id="presetHelp" class="file-status">Saved configurations let you reuse one workflow setup later. Enter a name, click save, then it will appear in the list.</div>
           </details>
-          <details id="workflowMetaPanel" class="more-settings">
+          <details id="workflowMetaPanel" class="more-settings subtle-details">
             <summary>Workflow Metadata</summary>
             <pre id="workflowMeta" class="codebox"></pre>
           </details>
         </section>
 
-        <section id="customStagePanel" class="panel hidden">
+        <section id="customStagePanel" class="panel secondary-panel quick-secondary hidden">
           <div class="panel-head">
             <h2>Workflow Builder</h2>
           </div>
@@ -208,12 +266,14 @@
           </div>
         </section>
 
-        <section class="grid">
-          <div class="panel">
+        <section class="grid clean-file-grid">
+          <div id="primaryPanel" class="panel file-panel">
             <div class="panel-head">
-              <h2>Primary File</h2>
+              <h2 id="primaryPanelTitle">Primary File</h2>
               <button id="inspectPrimary" class="ghost">Inspect</button>
             </div>
+            <label class="field-label" for="primaryManagedSelect">Choose From Project Files</label>
+            <select id="primaryManagedSelect"></select>
             <input id="primaryFile" type="file" accept=".csv,text/csv">
             <div id="primaryFileStatus" class="file-status">No file selected.</div>
             <div id="primaryPathErrors" class="inline-errors"></div>
@@ -230,11 +290,13 @@
             </div>
           </div>
 
-          <div class="panel">
+          <div id="referencePanel" class="panel file-panel">
             <div class="panel-head">
               <h2>Reference File</h2>
               <button id="inspectReference" class="ghost">Inspect</button>
             </div>
+            <label class="field-label" for="referenceManagedSelect">Choose From Project Files</label>
+            <select id="referenceManagedSelect"></select>
             <input id="referenceFile" type="file" accept=".csv,text/csv">
             <div id="referenceFileStatus" class="file-status">No file selected.</div>
             <div id="referencePathErrors" class="inline-errors"></div>
@@ -252,22 +314,25 @@
           </div>
         </section>
 
-        <section id="matchRunControlsPanel" class="panel options-panel">
+        <section id="matchRunControlsPanel" class="panel">
           <div class="panel-head">
             <h2>Run Controls</h2>
           </div>
-          <p class="section-lede">This section controls where files are written and how aggressive the matcher is allowed to be. If you are not troubleshooting match behavior, you usually only need to confirm the output folder and leave the thresholds alone.</p>
+          <p class="section-lede">Give the run a label, confirm the managed output folder, and use the default matching posture unless you already know you need to tune it.</p>
           <div class="grid controls-grid">
             <div>
-              <label class="field-label" for="outputPath">Output Directory</label>
-              <input id="outputPath" type="text" placeholder="output/webapp_runs/workflow_name">
-              <div class="field-help">The app writes all generated CSVs and the run summary into this folder. Use a dedicated folder per run or workflow so outputs do not blur together.</div>
+              <label class="field-label" for="runLabel">Run Folder Name</label>
+              <input id="runLabel" type="text" placeholder="april-review-run">
+              <div class="field-help">Pick a short label for this run. The app keeps output folders inside the managed project output area automatically.</div>
+              <label class="field-label" for="outputPath">Managed Output Directory</label>
+              <input id="outputPath" type="text" readonly>
+              <div class="field-help">This path is generated for you under <code>output/webapp_runs/&lt;workflow&gt;/</code>.</div>
               <div id="outputErrors" class="inline-errors"></div>
             </div>
             <div>
               <div class="workflow-description-box compact">
-                <strong>Workflow note</strong>
-                <p>Use the <strong>Prep</strong> tab first if your files need cleanup. Utilities such as split and projection do not require a matching workflow.</p>
+                <strong>Simple default</strong>
+                <p>Use Prep first if the source file is messy. Otherwise keep the default match posture and run.</p>
               </div>
               <div class="toggles top-gap">
                 <label><input id="strictMatchMode" type="checkbox"> Strict Match Mode</label>
@@ -275,19 +340,23 @@
               <div class="field-help">Strict mode makes the matcher less willing to trust weaker evidence. Turn it on when false matches are more dangerous than extra review work.</div>
             </div>
           </div>
-          <div id="quickPresetBar" class="quick-preset-bar">
-            <div class="quick-preset-head">
-              <strong>Quick presets</strong>
-              <span>Pick a starting posture instead of editing raw numbers first.</span>
-            </div>
-            <div class="quick-preset-actions">
-              <button id="presetConservative" class="ghost small" type="button">Conservative</button>
-              <button id="presetBalanced" class="ghost small" type="button">Balanced</button>
-              <button id="presetAggressive" class="ghost small" type="button">Aggressive</button>
-            </div>
+          <div class="actions top-gap">
+            <button id="guidedRunJobInline" type="button">Run</button>
+            <button id="validateJob" class="ghost">Check Setup</button>
           </div>
-          <details class="more-settings">
-            <summary>More Settings</summary>
+          <details id="matchAdvancedRunSettings" class="more-settings subtle-details">
+            <summary>Advanced Run Settings</summary>
+            <div id="quickPresetBar" class="quick-preset-bar">
+              <div class="quick-preset-head">
+                <strong>Quick presets</strong>
+                <span>Pick a starting posture instead of editing raw numbers first.</span>
+              </div>
+              <div class="quick-preset-actions">
+                <button id="presetConservative" class="ghost small" type="button">Conservative</button>
+                <button id="presetBalanced" class="ghost small" type="button">Balanced</button>
+                <button id="presetAggressive" class="ghost small" type="button">Aggressive</button>
+              </div>
+            </div>
             <div class="workflow-detail-box compact-stage-detail">
               <div class="workflow-detail-grid run-controls-grid">
                 <section class="workflow-detail-section">
@@ -336,35 +405,39 @@
                 </section>
               </div>
             </div>
+            <div id="thresholdCard" class="threshold-card">
+              <div class="threshold-head">
+                <h3>Match Thresholds</h3>
+                <p>Tune how aggressive the matcher should be when assigning confident, possible, and review decisions.</p>
+              </div>
+              <div class="threshold-grid">
+                <label>
+                  <span class="field-label">Confident</span>
+                  <input id="confidentThreshold" type="number" value="160">
+                  <div class="field-help">Higher means fewer rows get promoted to clear matches.</div>
+                </label>
+                <label>
+                  <span class="field-label">Possible</span>
+                  <input id="possibleThreshold" type="number" value="120">
+                  <div class="field-help">This is the middle bucket for stronger maybe-matches.</div>
+                </label>
+                <label>
+                  <span class="field-label">Review</span>
+                  <input id="reviewThreshold" type="number" value="85">
+                  <div class="field-help">Rows below this floor fall into unmatched instead of review.</div>
+                </label>
+              </div>
+              <div class="field-help top-gap">Reference scale: exact-ID support alone is worth about 130 points, exact full normalized address is worth about 70, exact email about 45, and exact phone about 35. That is why values like 85, 120, and 160 are meaningful here.</div>
+            </div>
+            <details id="jobSpecPanel" class="preview subtle-details">
+              <summary>Generated Job Spec</summary>
+              <textarea id="jobSpec" readonly></textarea>
+            </details>
+            <details class="preview subtle-details">
+              <summary>Validation / Raw Result</summary>
+              <pre id="resultBox" class="codebox result"></pre>
+            </details>
           </details>
-          <div id="thresholdCard" class="threshold-card">
-            <div class="threshold-head">
-              <h3>Match Thresholds</h3>
-              <p>Tune how aggressive the matcher should be when assigning confident, possible, and review decisions.</p>
-            </div>
-            <div class="threshold-grid">
-              <label>
-                <span class="field-label">Confident</span>
-                <input id="confidentThreshold" type="number" value="160">
-                <div class="field-help">Higher means fewer rows get promoted to clear matches.</div>
-              </label>
-              <label>
-                <span class="field-label">Possible</span>
-                <input id="possibleThreshold" type="number" value="120">
-                <div class="field-help">This is the middle bucket for stronger maybe-matches.</div>
-              </label>
-              <label>
-                <span class="field-label">Review</span>
-                <input id="reviewThreshold" type="number" value="85">
-                <div class="field-help">Rows below this floor fall into unmatched instead of review.</div>
-              </label>
-            </div>
-            <div class="field-help top-gap">Reference scale: exact-ID support alone is worth about 130 points, exact full normalized address is worth about 70, exact email about 45, and exact phone about 35. That is why values like 85, 120, and 160 are meaningful here.</div>
-          </div>
-          <div class="actions top-gap">
-            <button id="validateJob" class="ghost">Validate</button>
-            <button id="runJob">Run</button>
-          </div>
           <div id="matchProgress" class="progress-shell hidden">
             <div class="progress-top">
               <strong id="matchProgressLabel">Preparing match run...</strong>
@@ -372,14 +445,9 @@
             </div>
             <div class="progress-track"><div id="matchProgressBar" class="progress-bar"></div></div>
           </div>
-          <details id="jobSpecPanel" class="preview">
-            <summary>Generated Job Spec Preview</summary>
-            <textarea id="jobSpec" readonly></textarea>
-          </details>
-          <pre id="resultBox" class="codebox result"></pre>
         </section>
 
-        <section class="panel">
+        <section class="panel secondary-panel">
           <div class="panel-head">
             <h2>Latest Result</h2>
           </div>
@@ -400,10 +468,8 @@
           </div>
         </section>
 
-        <section class="panel">
-          <div class="panel-head">
-            <h2>Project Files</h2>
-          </div>
+        <details class="panel secondary-panel subtle-details quick-secondary">
+          <summary>Project Files</summary>
           <p class="section-lede">Pick from staged input files or review recently generated outputs without leaving the app.</p>
           <div class="grid">
             <div>
@@ -418,12 +484,10 @@
               <div id="inventoryOutputs" class="inventory-list"></div>
             </div>
           </div>
-        </section>
+        </details>
 
-        <section id="matchPreviewPanel" class="panel">
-          <div class="panel-head">
-            <h2>Preview Rows</h2>
-          </div>
+        <details id="matchPreviewPanel" class="panel secondary-panel subtle-details quick-secondary" open>
+          <summary>Preview Rows</summary>
           <div class="review-note">
             Review rows prioritize `_match_score`, `_match_reason`, and `_match_explanation` so you can inspect why the matcher hesitated.
           </div>
@@ -437,7 +501,7 @@
               <div id="unmatchedPreview" class="preview-table-wrap"></div>
             </div>
           </div>
-        </section>
+        </details>
       </section>
     </main>
 
@@ -484,6 +548,26 @@
             <button id="cancelDangerModal" class="ghost" type="button">Cancel</button>
             <button id="confirmDangerModal" class="danger-button" type="button">Delete</button>
           </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="tourModal" class="modal-shell hidden" role="dialog" aria-modal="true" aria-labelledby="tourModalTitle">
+      <div class="modal-backdrop" data-close-tour-modal="true"></div>
+      <section class="modal-card tour-modal">
+        <div class="panel-head">
+          <div>
+            <div id="tourStepCount" class="tour-step-count">Step 1 of 1</div>
+            <h2 id="tourModalTitle">Guided Tour</h2>
+          </div>
+          <button id="closeTourModal" class="ghost" type="button">Close</button>
+        </div>
+        <div class="modal-body">
+          <p id="tourModalBody">Tour content.</p>
+        </div>
+        <div class="actions tour-actions">
+          <button id="tourPrev" class="ghost" type="button">Back</button>
+          <button id="tourNext" type="button">Next</button>
         </div>
       </section>
     </div>
