@@ -228,9 +228,10 @@ def run_normalize_addresses(context: StageContext, config: dict) -> StageContext
         df[address1_col] = split_results.apply(lambda value: value[0])
         if address2_col:
             split_units = split_results.apply(lambda value: value[1])
-            if mode == "voter" and address2_col in df.columns:
-                existing = df[address2_col].fillna("").astype(str).str.strip()
-                df[address2_col] = existing.where(existing != "", split_units)
+            if address2_col in df.columns:
+                existing_values = df[address2_col]
+                existing_text = existing_values.fillna("").astype(str).str.strip()
+                df[address2_col] = existing_values.where(existing_text != "", split_units)
             else:
                 df[address2_col] = split_units
         df["_address_split_status"] = split_results.apply(lambda value: value[2])

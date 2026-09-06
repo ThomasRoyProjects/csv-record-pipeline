@@ -95,10 +95,9 @@ def _score_candidate(primary_row: dict, candidate: dict) -> tuple[int, dict]:
     email_exact = bool(primary_row["email"] and primary_row["email"] == candidate["email"])
     phone_exact = bool(primary_row["phone"] and primary_row["phone"] == candidate["phone"])
     first_name_conflict = bool(
-        primary_row["first"]
-        and candidate["first"]
+        len(primary_row["first"]) > 1
+        and len(candidate["first"]) > 1
         and not first_exact
-        and not first_initial_match
         and first_similarity < 0.7
     )
     shared_family_phone = bool(
@@ -179,7 +178,6 @@ def _is_meaningful_unit_conflict(flags: dict) -> bool:
     person_supported = (
         flags.get("name_matched")
         or flags.get("name_initial_matched")
-        or flags.get("first_exact")
         or (flags.get("last_similarity", 0.0) >= 0.85 and flags.get("first_similarity", 0.0) >= 0.85)
         or (flags.get("phone_matched") and not flags.get("shared_family_phone"))
         or flags.get("email_matched")
@@ -407,7 +405,7 @@ def match_primary_to_reference(
             score, flags = _score_candidate(primary_row, candidate)
             is_meaningful_conflict = _is_meaningful_unit_conflict(flags)
 
-            eligible = (score > 0) or is_meaningful_conflict
+            eligible = is_meaningful_conflict or (score > 0 and not flags["unit_conflict"])
             if not eligible:
                 continue
 
@@ -419,14 +417,25 @@ def match_primary_to_reference(
 
             cand_name_conflict = flags.get("first_name_conflict", False)
             best_name_conflict = best_flags.get("first_name_conflict", False)
-            cand_has_identity = bool(flags.get("name_matched") or flags.get("id_matched") or flags.get("email_matched"))
-            best_has_identity = bool(best_flags.get("name_matched") or best_flags.get("id_matched") or best_flags.get("email_matched"))
+            cand_has_identity = bool(
+                flags.get("name_matched") or flags.get("id_matched") or flags.get("email_matched")
+            )
+            best_has_identity = bool(
+                best_flags.get("name_matched") or best_flags.get("id_matched") or best_flags.get("email_matched")
+            )
+            best_meaningful_conflict = _is_meaningful_unit_conflict(best_flags)
 
             if cand_has_identity and best_name_conflict:
                 best_candidate = candidate
                 best_score = score
                 best_flags = flags
             elif best_has_identity and cand_name_conflict:
+                continue
+            elif is_meaningful_conflict and not best_meaningful_conflict and not best_has_identity:
+                best_candidate = candidate
+                best_score = score
+                best_flags = flags
+            elif best_meaningful_conflict and not is_meaningful_conflict and not cand_has_identity:
                 continue
             elif score > best_score:
                 best_candidate = candidate

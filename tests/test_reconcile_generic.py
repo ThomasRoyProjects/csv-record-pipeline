@@ -22,10 +22,22 @@ class ReconcileGenericEdgeCasesTests(unittest.TestCase):
                 }
             ]
         )
-        # Reference has near-match person at the same street address with Apt 1A
-        # (similarities .857 / .875 below score bonus thresholds, so penalized score <= 0)
+        # A higher-scoring same-surname/postal distractor must not hide the near-match
+        # at the same street whose different unit pushes its score below zero.
         reference = pd.DataFrame(
             [
+                {
+                    "person_id": "299",
+                    "first_name": "Zoe",
+                    "last_name": "Reynolds",
+                    "primary_address1": "999 Cedar Rd",
+                    "primary_address2": "Apt 9",
+                    "primary_city": "Victoria",
+                    "primary_state": "BC",
+                    "primary_zip": "V8V1A1",
+                    "email": "",
+                    "phone": "",
+                },
                 {
                     "person_id": "201",
                     "first_name": "Kristin",
@@ -112,7 +124,7 @@ class ReconcileGenericEdgeCasesTests(unittest.TestCase):
             [
                 {
                     "person_id": "203",
-                    "first_name": "Zoe",
+                    "first_name": "Arthur",
                     "last_name": "Kowalski",
                     "primary_address1": "500 Oak Avenue",
                     "primary_address2": "Apt 2",
@@ -130,8 +142,10 @@ class ReconcileGenericEdgeCasesTests(unittest.TestCase):
         self.assertEqual(row["_match_status"], "UNMATCHED")
         self.assertEqual(row["_match_reason"], "NO_MATCH")
         self.assertFalse(row["_matched_review"])
+        self.assertEqual(row["_matched_reference_id"], "")
+        self.assertNotIn("unit_conflict", row["_match_explanation"])
 
-    def test_co_resident_with_address_postal_phone_does_not_displace_true_moved_candidate(self) -> None:
+    def test_same_initial_co_resident_does_not_displace_true_moved_candidate(self) -> None:
         # Primary is Alice Walker who moved to an updated address
         primary = pd.DataFrame(
             [
@@ -150,13 +164,13 @@ class ReconcileGenericEdgeCasesTests(unittest.TestCase):
             ]
         )
         # Reference contains:
-        # 1. Bob Walker (surname + primary's address + postal + shared phone -> strong household evidence)
+        # 1. Andrew Walker (same initial + surname + primary's address/postal/shared phone)
         # 2. Alice Walker (exact full name match at old address, no phone listed)
         reference = pd.DataFrame(
             [
                 {
                     "person_id": "204",
-                    "first_name": "Bob",
+                    "first_name": "Andrew",
                     "last_name": "Walker",
                     "primary_address1": "900 New Blvd",
                     "primary_address2": "",

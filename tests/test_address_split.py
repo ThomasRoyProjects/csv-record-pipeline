@@ -1,5 +1,8 @@
 import unittest
 
+import pandas as pd
+
+from core.stages import run_normalize_addresses
 from normalize.address_split import split_unit_and_street
 
 
@@ -56,6 +59,43 @@ class AddressSplitTests(unittest.TestCase):
         self.assertEqual(street, "100 Broadway")
         self.assertEqual(unit, "500")
         self.assertEqual(status, "OK_UNIT_STREET")
+
+    def test_normalize_stage_preserves_structured_unit_and_fills_missing_unit_from_suffix(self):
+        frame = pd.DataFrame(
+            [
+                {
+                    "primary_address1": "123 Main St Apt 4B",
+                    "primary_address2": "",
+                    "mail_city": "Victoria",
+                    "mail_state": "BC",
+                    "mail_zip": "V8V1A1",
+                },
+                {
+                    "primary_address1": "500 Oak Ave",
+                    "primary_address2": "Suite 9",
+                    "mail_city": "Victoria",
+                    "mail_state": "BC",
+                    "mail_zip": "V8V2B2",
+                },
+            ]
+        )
+        context = run_normalize_addresses(
+            {"datasets": {"primary": frame}},
+            {
+                "dataset_role": "primary",
+                "mode": "member",
+                "address1_col": "primary_address1",
+                "address2_col": "primary_address2",
+                "city_col": "mail_city",
+                "state_col": "mail_state",
+                "zip_col": "mail_zip",
+            },
+        )
+        normalized = context["datasets"]["primary"]
+
+        self.assertEqual(normalized.loc[0, "primary_address1"], "123 Main St")
+        self.assertEqual(normalized.loc[0, "primary_address2"], "4B")
+        self.assertEqual(normalized.loc[1, "primary_address2"], "Suite 9")
 
 
 if __name__ == "__main__":

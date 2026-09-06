@@ -286,9 +286,10 @@ The repo now has a first unit-test layer under [tests](tests).
 
 Current coverage includes:
 
-- address splitting behavior
-- mapping suggestion regressions
-- header-family classification regressions
+- prefix and suffix address splitting with preservation of populated structured unit fields
+- immutable-source fallback mapping and canonical coalescing regressions
+- scored candidate-union, unit-conflict, and shared-household identity-selection regressions
+- mapping suggestion and header-family classification regressions
 - `custom_job` validation around `stage_sequence`
 
 Run the suite with the repo environment:
