@@ -50,7 +50,7 @@ def _build_match_explanation(reason: str, score: int, flags: dict) -> str:
     if flags["email_matched"]:
         parts.append("email")
     if flags["phone_matched"]:
-        parts.append("phone")
+        parts.append("shared_phone" if flags.get("shared_family_phone") else "phone")
     if flags["unit_matched"]:
         parts.append("unit")
     if flags["unit_conflict"]:
@@ -63,12 +63,19 @@ def _score_candidate(primary_row: dict, candidate: dict) -> tuple[int, dict]:
     first_exact = bool(primary_row["first"] and primary_row["first"] == candidate["first"])
     last_exact = bool(primary_row["last"] and primary_row["last"] == candidate["last"])
     name_exact = first_exact and last_exact
+    first_initial_match = bool(
+        _first_initial(primary_row["first"])
+        and _first_initial(primary_row["first"]) == candidate["first_initial"]
+    )
     name_initial = bool(
         primary_row["last"]
         and primary_row["last"] == candidate["last"]
-        and _first_initial(primary_row["first"])
-        and _first_initial(primary_row["first"]) == candidate["first_initial"]
+        and first_initial_match
     )
+    first_similarity = _similarity(primary_row["first"], candidate["first"])
+    last_similarity = _similarity(primary_row["last"], candidate["last"])
+    address_similarity = _similarity(primary_row["address"], candidate["address"])
+    address1_similarity = _similarity(primary_row["address1"], candidate["address1"])
     address_exact = bool(primary_row["address"] and primary_row["address"] == candidate["address"])
     address1_exact = bool(primary_row["address1"] and primary_row["address1"] == candidate["address1"])
     unit_exact = bool(primary_row["address2"] and primary_row["address2"] == candidate["address2"])
@@ -76,15 +83,28 @@ def _score_candidate(primary_row: dict, candidate: dict) -> tuple[int, dict]:
         primary_row["address2"]
         and candidate["address2"]
         and primary_row["address2"] != candidate["address2"]
+        and (
+            address_exact
+            or address1_exact
+            or address1_similarity >= 0.9
+            or address_similarity >= 0.9
+            or id_matched
+        )
     )
     postal_exact = bool(primary_row["postal"] and primary_row["postal"] == candidate["postal"])
     email_exact = bool(primary_row["email"] and primary_row["email"] == candidate["email"])
     phone_exact = bool(primary_row["phone"] and primary_row["phone"] == candidate["phone"])
-    first_similarity = _similarity(primary_row["first"], candidate["first"])
-    last_similarity = _similarity(primary_row["last"], candidate["last"])
-    address_similarity = _similarity(primary_row["address"], candidate["address"])
-    address1_similarity = _similarity(primary_row["address1"], candidate["address1"])
-
+    first_name_conflict = bool(
+        primary_row["first"]
+        and candidate["first"]
+        and not first_exact
+        and not first_initial_match
+        and first_similarity < 0.7
+    )
+    shared_family_phone = bool(
+        phone_exact
+        and first_name_conflict
+    )
     score = 0
     if id_matched:
         score += 130
@@ -107,7 +127,10 @@ def _score_candidate(primary_row: dict, candidate: dict) -> tuple[int, dict]:
     if email_exact:
         score += 45
     if phone_exact:
-        score += 35
+        if shared_family_phone:
+            score += 10
+        else:
+            score += 35
     if not first_exact and first_similarity >= 0.88:
         score += 18
     if not last_exact and last_similarity >= 0.9:
@@ -128,11 +151,40 @@ def _score_candidate(primary_row: dict, candidate: dict) -> tuple[int, dict]:
         "postal_matched": postal_exact,
         "email_matched": email_exact,
         "phone_matched": phone_exact,
+        "first_exact": first_exact,
+        "first_name_conflict": first_name_conflict,
+        "shared_family_phone": shared_family_phone,
         "first_similarity": first_similarity,
         "last_similarity": last_similarity,
         "address_similarity": address_similarity,
         "address1_similarity": address1_similarity,
     }
+
+
+def _is_meaningful_unit_conflict(flags: dict) -> bool:
+    if not flags.get("unit_conflict"):
+        return False
+    if flags.get("id_matched"):
+        return True
+    address_supported = (
+        flags.get("address1_matched")
+        or flags.get("address_matched")
+        or flags.get("address1_similarity", 0.0) >= 0.9
+        or flags.get("address_similarity", 0.0) >= 0.9
+    )
+    if not address_supported:
+        return False
+    if flags.get("first_name_conflict"):
+        return False
+    person_supported = (
+        flags.get("name_matched")
+        or flags.get("name_initial_matched")
+        or flags.get("first_exact")
+        or (flags.get("last_similarity", 0.0) >= 0.85 and flags.get("first_similarity", 0.0) >= 0.85)
+        or (flags.get("phone_matched") and not flags.get("shared_family_phone"))
+        or flags.get("email_matched")
+    )
+    return bool(person_supported)
 
 
 def _classify_best_match(
@@ -147,7 +199,8 @@ def _classify_best_match(
     if flags["unit_conflict"]:
         if flags["id_matched"]:
             return "REVIEW", "ID_MATCH_WITH_UNIT_CONFLICT"
-        return "REVIEW", "ADDRESS_UNIT_CONFLICT"
+        if _is_meaningful_unit_conflict(flags):
+            return "REVIEW", "ADDRESS_UNIT_CONFLICT"
     if flags["id_matched"] and flags["name_matched"] and flags["address_matched"]:
         return "CONFIDENT", "ID_NAME_ADDRESS_EXACT"
     if flags["id_matched"] and flags["name_matched"]:
@@ -254,6 +307,8 @@ def match_primary_to_reference(
     by_id: dict[str, list[dict]] = {}
     by_email: dict[str, list[dict]] = {}
     by_phone: dict[str, list[dict]] = {}
+    by_last_first: dict[tuple[str, str], list[dict]] = {}
+    by_last_first_initial: dict[tuple[str, str], list[dict]] = {}
     by_last_postal: dict[tuple[str, str], list[dict]] = {}
     by_last_address1: dict[tuple[str, str], list[dict]] = {}
     by_last: dict[str, list[dict]] = {}
@@ -277,6 +332,10 @@ def match_primary_to_reference(
             by_last_postal.setdefault((record["last"], record["postal"]), []).append(record)
         if record["last"] and record["address1"]:
             by_last_address1.setdefault((record["last"], record["address1"]), []).append(record)
+        if record["last"] and record["first"]:
+            by_last_first.setdefault((record["last"], record["first"]), []).append(record)
+        if record["last"] and record["first_initial"]:
+            by_last_first_initial.setdefault((record["last"], record["first_initial"]), []).append(record)
 
     def classify_row(row):
         primary_row = {
@@ -297,17 +356,22 @@ def match_primary_to_reference(
         if primary_row["email"]:
             candidate_pool.extend(by_email.get(primary_row["email"], []))
         if primary_row["phone"]:
-            candidate_pool.extend(by_phone.get(primary_row["phone"], []))
-        if primary_row["last"] and primary_row["postal"]:
-            candidate_pool.extend(by_last_postal.get((primary_row["last"], primary_row["postal"]), []))
-        if primary_row["last"] and primary_row["address1"]:
-            candidate_pool.extend(by_last_address1.get((primary_row["last"], primary_row["address1"]), []))
-        if not candidate_pool and primary_row["last"]:
-            candidate_pool.extend(by_last.get(primary_row["last"], [])[:250])
+            candidate_pool.extend(by_phone.get(primary_row["phone"], [])[:100])
+        if primary_row["last"]:
+            if primary_row["first"]:
+                candidate_pool.extend(by_last_first.get((primary_row["last"], primary_row["first"]), [])[:100])
+            first_init = _first_initial(primary_row["first"])
+            if first_init:
+                candidate_pool.extend(by_last_first_initial.get((primary_row["last"], first_init), [])[:100])
+            if primary_row["postal"]:
+                candidate_pool.extend(by_last_postal.get((primary_row["last"], primary_row["postal"]), [])[:100])
+            if primary_row["address1"]:
+                candidate_pool.extend(by_last_address1.get((primary_row["last"], primary_row["address1"]), [])[:100])
+            candidate_pool.extend(by_last.get(primary_row["last"], [])[:100])
+        if primary_row["address1"]:
+            candidate_pool.extend(by_address1.get(primary_row["address1"], [])[:100])
         if not candidate_pool and primary_row["postal"]:
             candidate_pool.extend(by_postal.get(primary_row["postal"], [])[:250])
-        if not candidate_pool and primary_row["address1"]:
-            candidate_pool.extend(by_address1.get(primary_row["address1"], [])[:250])
 
         seen = set()
         deduped_candidates = []
@@ -330,6 +394,9 @@ def match_primary_to_reference(
             "postal_matched": False,
             "email_matched": False,
             "phone_matched": False,
+            "first_exact": False,
+            "first_name_conflict": False,
+            "shared_family_phone": False,
             "first_similarity": 0.0,
             "last_similarity": 0.0,
             "address_similarity": 0.0,
@@ -338,11 +405,33 @@ def match_primary_to_reference(
 
         for candidate in deduped_candidates:
             score, flags = _score_candidate(primary_row, candidate)
-            if score > best_score:
-                best_score = score
-                best_candidate = candidate
-                best_flags = flags
+            is_meaningful_conflict = _is_meaningful_unit_conflict(flags)
 
+            eligible = (score > 0) or is_meaningful_conflict
+            if not eligible:
+                continue
+
+            if best_candidate is None:
+                best_candidate = candidate
+                best_score = score
+                best_flags = flags
+                continue
+
+            cand_name_conflict = flags.get("first_name_conflict", False)
+            best_name_conflict = best_flags.get("first_name_conflict", False)
+            cand_has_identity = bool(flags.get("name_matched") or flags.get("id_matched") or flags.get("email_matched"))
+            best_has_identity = bool(best_flags.get("name_matched") or best_flags.get("id_matched") or best_flags.get("email_matched"))
+
+            if cand_has_identity and best_name_conflict:
+                best_candidate = candidate
+                best_score = score
+                best_flags = flags
+            elif best_has_identity and cand_name_conflict:
+                continue
+            elif score > best_score:
+                best_candidate = candidate
+                best_score = score
+                best_flags = flags
         status, reason = _classify_best_match(
             best_score,
             best_flags,

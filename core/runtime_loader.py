@@ -35,28 +35,25 @@ def _coalesce_columns(df: pd.DataFrame, sources: list[str]) -> pd.Series:
 def resolve_columns(df: pd.DataFrame, column_map: dict | None) -> pd.DataFrame:
     if not column_map:
         return df
-    df = df.copy()
+    source_df = df
+    result_df = df.copy()
     for canonical, source in column_map.items():
         sources = _mapping_sources(source)
         if not sources:
             continue
-        if len(sources) == 1 and sources[0] == canonical:
+        if len(sources) == 1 and sources[0] == canonical and canonical in source_df.columns:
             continue
 
-        if len(sources) == 1 and canonical not in df.columns and sources[0] in df.columns:
-            df = df.rename(columns={sources[0]: canonical})
-            continue
-
-        source_values = _coalesce_columns(df, sources)
-        if canonical in df.columns:
-            canonical_values = df[canonical]
+        source_values = _coalesce_columns(source_df, sources)
+        if canonical in result_df.columns:
+            canonical_values = result_df[canonical]
             if isinstance(canonical_values, pd.DataFrame):
                 canonical_values = canonical_values.iloc[:, 0]
             canonical_text = canonical_values.fillna("").astype(str).str.strip()
-            df[canonical] = canonical_values.where(canonical_text != "", source_values)
+            result_df[canonical] = canonical_values.where(canonical_text != "", source_values)
         else:
-            df[canonical] = source_values
-    return df
+            result_df[canonical] = source_values
+    return result_df
 
 
 def load_many(paths: Iterable[str]) -> pd.DataFrame:
